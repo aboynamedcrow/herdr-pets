@@ -15,7 +15,7 @@ if let i = arguments.firstIndex(of: "--export-frames"), i + 1 < arguments.count 
 
 // One instance only (demo excepted). The plugin starts the app on every status event. The lock is released when the process exits.
 // ponytail: one lock for all Herdr sessions, so only the first session gets pets. Key the lock by HERDR_SOCKET_PATH if several sessions matter.
-let lock = open(FileManager.default.temporaryDirectory.appendingPathComponent("herdr-agent-pets.lock").path, O_CREAT | O_RDWR, 0o644)
+let lock = open(FileManager.default.temporaryDirectory.appendingPathComponent("herdr-pets.lock").path, O_CREAT | O_RDWR, 0o644)
 guard demo || flock(lock, LOCK_EX | LOCK_NB) == 0 else { exit(0) }
 
 PetKind.allCases.forEach { _ = Sprites.frames($0) }   // Preload images. Stops right here if an asset is broken

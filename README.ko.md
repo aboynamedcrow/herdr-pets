@@ -1,131 +1,136 @@
-# Agent Pets
+# herdr-pets
 
 [English](README.md) | 한국어
 
-Agent Pets는 macOS에서 Herdr 에이전트의 상태를 보여줍니다. 에이전트마다 펫 한 마리가 있습니다.
+![herdr-pets의 캐릭터 14종](assets/readme/characters.png)
 
-펫은 화면의 지정된 영역에 머뭅니다. 이 영역을 **모임 영역**이라고 합니다. 에이전트가 입력을 기다리면 펫은 화면 가장자리를 따라 포인터 쪽으로 이동합니다.
+![Dock 위에 모여 있던 펫이 커서 쪽으로 달려가는 모습](assets/readme/demo.gif)
 
-## 요구 사항
+herdr-pets는 Herdr 에이전트마다 macOS 화면에 펫을 띄워 주는 플러그인입니다.  
+펫들은 평소 Dock 위에 모여 있다가, 에이전트가 block되면 커서 옆으로 달려와 손을 흔듭니다.  
+block이 풀리면 원래 자리로 돌아갑니다.
 
-- 데스크톱에 로그인한 macOS 환경.
-- Xcode Command Line Tools.
-- 실제 에이전트 상태를 읽기 위한 Herdr. 데모 모드에는 Herdr가 필요하지 않습니다.
+## 빠른 시작
 
-실행 파일은 `bin` 폴더에 둡니다. `assets` 폴더는 프로젝트 폴더에 둡니다.
+필요한 것:
 
-## Herdr 플러그인으로 설치
+- macOS
+- [Herdr](https://github.com/ogulcancelik/herdr) 0.9.3 이상
+- Xcode Command Line Tools (설치할 때 Swift로 앱을 빌드합니다)
 
 ```sh
-herdr plugin install <owner>/herdr-agent-pets   # bin/pets를 빌드합니다
+herdr plugin install hmu332233/herdr-pets
 ```
 
-로컬 폴더를 쓰려면 먼저 아래 방법으로 `bin/pets`를 빌드한 뒤 `herdr plugin link .`를 실행합니다. Herdr는 link한 플러그인을 빌드하지 않습니다.
+설치 후 에이전트 상태가 처음 바뀌면 Herdr가 앱을 실행하고 펫이 나타납니다.
+Herdr 서버를 다시 시작할 때도 앱이 자동으로 실행됩니다.
 
-플러그인은 Herdr 서버가 시작될 때와 에이전트 상태가 바뀔 때마다 앱을 실행합니다. 앱은 하나만 실행됩니다. Herdr 서버가 멈추면 30초 뒤 앱도 종료됩니다. 메뉴 막대에서 앱을 종료해도 다음 상태 변화 때 다시 실행됩니다. 끄려면 `herdr plugin disable dev.minung.agent-pets`를 실행한 뒤 메뉴 막대에서 앱을 종료합니다. 플러그인을 업데이트하거나 제거한 뒤에도 같은 방법으로 앱을 종료합니다.
+메뉴 막대에 펫 아이콘이 생기고, 아이콘 옆 숫자는 block된 에이전트 수입니다.
+아이콘을 누르면 설정 패널이 열립니다.
 
-## 빌드 및 실행
+## 동작 방식
 
-1. 프로젝트 폴더에서 터미널을 엽니다.
-2. 앱을 빌드합니다.
+![working, blocked, done, idle 상태의 펫 포즈](assets/readme/poses.png)
 
-   ```sh
-   mkdir -p bin
-   swiftc -O -swift-version 5 src/*.swift -o bin/pets
-   ```
+| Herdr 상태 | 펫 |
+| --- | --- |
+| `blocked` | 커서 옆으로 달려와 **!** 를 띄우고 손을 흔듭니다 |
+| `working` | 돌아다닙니다 |
+| `done` | 축하하고 **✓** 를 띄웁니다 |
+| `idle`, `unknown` | 쉽니다 |
 
-3. 앱을 실행합니다.
-
-   ```sh
-   ./bin/pets
-   ```
-
-앱은 2초마다 `herdr agent list`로 에이전트 상태를 읽습니다. `herdr`는 `PATH`에서 찾습니다. 다른 실행 파일을 사용하려면 `HERDR_BIN_PATH`에 해당 경로를 지정합니다.
-
-앱을 종료하려면 메뉴 막대 패널에서 **종료**를 선택합니다. 터미널에서 **Ctrl-C**를 눌러도 됩니다.
-
-## 명령 옵션
-
-| 명령 | 기능 |
-|---|---|
-| `./bin/pets --demo` | Herdr 없이 14종의 캐릭터를 표시합니다. 12초마다 상태가 바뀝니다. |
-| `./bin/pets --self-test` | 앱 창 없이 이미지 파일, 캐릭터 배정, 움직임을 검사합니다. |
-| `./bin/pets --export-frames <directory>` | 프레임 정렬 검사에 사용할 이미지를 내보냅니다. `<directory>`를 출력 경로로 바꿉니다. |
-
-## 펫 상태
-
-기본 모임 영역의 크기는 260 × 80 pt입니다. 화면 오른쪽 아래의 Dock 위에 있습니다.
-
-| 에이전트 상태 | 펫 동작 |
-|---|---|
-| `working` | 모임 영역 안에서 이동합니다. 잠깐 멈춘 동안에도 작은 동작을 합니다. |
-| `idle`, `unknown` | 움직이지 않고 쉽니다. |
-| `done` | 축하 동작을 한 뒤 쉽니다. `done` 상태인 동안 초록색 ✓가 표시됩니다. |
-| `blocked` | 뛰어오른 뒤 가장 가까운 화면 가장자리로 이동합니다. 가장자리를 따라 포인터 쪽으로 이동합니다. 주황색 !를 표시하고 손을 흔듭니다. |
-
-`blocked` 상태의 펫은 포인터가 충분히 멀어지면 따라갑니다. 상태가 바뀌면 모임 영역으로 돌아옵니다.
-
-이동 경로는 메뉴 막대 아래와 Dock 위에 있습니다. 펫은 발이 화면 가장자리를 향하도록 몸을 돌립니다. 모서리에서는 몸을 서서히 돌립니다.
-
-앱은 최대 20마리를 표시합니다. 에이전트가 더 많으면 `blocked` 상태를 먼저 표시합니다. 메뉴 막대 아이콘 옆 숫자는 `blocked` 상태의 에이전트 수입니다.
-
-일반 이동은 초당 15프레임, 빠른 이동은 초당 30프레임으로 표시합니다. 모든 펫이 쉬면 화면 갱신을 멈춥니다.
+펫은 클릭이나 포커스를 가로채지 않으며, herdr-pets는 Herdr의 에이전트 상태만 읽습니다.
 
 ## 설정
 
-메뉴 막대 아이콘을 선택하면 설정 패널이 열립니다. 패널에는 전체 에이전트 수와 입력을 기다리는 에이전트 수가 표시됩니다. 입력을 기다리는 에이전트가 있으면 상태 문구가 주황색으로 표시됩니다.
+메뉴 막대 아이콘을 누르면 설정 패널이 열립니다. 맨 위에서 전체 에이전트 수와 block된
+에이전트 수를 볼 수 있습니다.
 
-설정 항목은 한국어로 표시됩니다.
+<img src="assets/readme/settings.png" alt="herdr-pets 설정 패널" width="340">
 
-| 항목 | 기능 |
-|---|---|
-| **에이전트 종류대로** | Claude와 Codex는 전용 캐릭터를 사용합니다. 다른 에이전트는 종류마다 일반 캐릭터 12종 중 하나를 배정합니다. |
-| **14종 골고루** | 각 에이전트에 14종 중 하나의 캐릭터를 배정합니다. |
-| **펫 표시** | 펫을 표시하거나 숨깁니다. |
-| **펫 크기** | 펫 크기를 16~72 pt로 설정합니다. !와 ✓ 표시의 크기는 유지됩니다. |
-| **동작 줄이기** | 움직임 대신 고정된 포즈를 표시합니다. macOS의 동작 줄이기 설정도 적용합니다. |
-| **모이는 곳 → 정하기…** | 모임 영역 편집 창을 엽니다. |
+| 설정 | 설명 |
+| --- | --- |
+| **에이전트 종류대로** | Claude와 Codex는 전용 캐릭터로, 나머지 에이전트는 종류별로 정해진 캐릭터로 보여 줍니다 |
+| **14종 골고루** | 에이전트마다 14종 가운데 하나를 골라 보여 줍니다 |
+| **펫 표시** | 펫을 보이거나 숨깁니다 |
+| **펫 크기** | 16–72 pt 사이에서 조절합니다. **!** 와 **✓** 크기는 바뀌지 않습니다 |
+| **동작 줄이기** | 펫이 움직이지 않고 포즈로만 상태를 알려 줍니다. macOS의 동작 줄이기 설정도 따릅니다 |
+| **모이는 곳 → 정하기…** | 반투명 창을 원하는 위치로 옮기고 크기를 조절한 뒤, 창을 닫아 저장하세요 |
+| **종료** | 앱을 종료합니다 |
 
-캐릭터 모음에서는 현재 설정과 에이전트 종류로 표시할 수 없는 캐릭터가 흐리게 보입니다.
+설정은 플러그인 설정 폴더에 저장됩니다. 위치는 아래 명령으로 확인할 수 있습니다.
 
-앱 설정과 모임 영역은 프로젝트 폴더의 `pets-preferences.json`에 저장합니다. Herdr 플러그인으로 실행되면 이 파일은 플러그인 설정 폴더(`herdr plugin config-dir dev.minung.agent-pets`)에 있습니다.
+```sh
+herdr plugin config-dir dev.minung.herdr-pets
+```
 
-## 캐릭터 이미지
+## 끄기와 제거
 
-투명 PNG 파일을 사용합니다. 포즈나 프레임마다 같은 폭의 칸을 사용합니다. 칸은 가로 한 줄로 배치합니다.
+메뉴 막대에서 앱을 종료해도, 다음에 에이전트 상태가 바뀌면 플러그인이 앱을 다시 실행합니다.
+완전히 끄려면 플러그인을 비활성화한 뒤 메뉴 막대에서 앱을 종료하세요.
+
+```sh
+herdr plugin disable dev.minung.herdr-pets    # 제거하려면: herdr plugin uninstall dev.minung.herdr-pets
+```
+
+플러그인을 업데이트하거나 제거한 뒤에도 실행 중인 앱은 메뉴 막대에서 직접 종료하세요.
+Herdr 서버가 꺼지면 앱도 30초쯤 뒤에 스스로 종료됩니다.
+
+## 문제 해결
+
+펫이 나타나지 않으면 플러그인 상태와 최근 실행 기록을 확인하세요.
+
+```sh
+herdr plugin list --plugin dev.minung.herdr-pets
+herdr plugin log list --plugin dev.minung.herdr-pets --limit 20
+```
+
+- 설치 직후에는 에이전트 상태가 한 번 바뀌어야 펫이 나타납니다.
+- 실행 기록에 종료 코드 1이 남아 있다면 `bin/pets`가 빌드되지 않은 것입니다.
+  `xcode-select --install`로 Xcode Command Line Tools를 설치한 뒤 플러그인을 다시 설치하세요.
+- 앱은 한 번에 하나만 실행됩니다. Herdr 세션을 여러 개 쓰면 먼저 앱을 실행한 세션의 펫만 보입니다.
+
+## 개발
+
+```sh
+mkdir -p bin
+swiftc -O -swift-version 5 src/*.swift -o bin/pets
+./bin/pets --self-test
+```
+
+로컬에서 고친 코드를 Herdr에 연결하려면 먼저 빌드한 뒤 link하세요. link한 플러그인은 Herdr가
+빌드해 주지 않습니다.
+
+```sh
+herdr plugin link .
+```
+
+앱을 직접 실행할 수도 있습니다.
+
+| 명령 | 설명 |
+| --- | --- |
+| `./bin/pets` | 실행 중인 Herdr 에이전트의 펫을 보여 줍니다 |
+| `./bin/pets --demo` | Herdr 없이 14종을 모두 보여 줍니다. 12초마다 상태가 바뀝니다 |
+| `./bin/pets --self-test` | 창을 띄우지 않고 이미지, 캐릭터 배정, 움직임을 검사합니다 |
+| `./bin/pets --export-frames <directory>` | 애니메이션이 떨리지 않는지 확인할 수 있게 프레임 이미지를 내보냅니다 |
+
+직접 실행하면 `herdr`는 `PATH`나 `HERDR_BIN_PATH`에서 찾고, 설정은 프로젝트 폴더의
+`pets-preferences.json`에 저장합니다.
+
+### 캐릭터 이미지
+
+이미지는 모두 투명 PNG이며, 포즈나 프레임을 같은 폭의 칸에 가로로 나란히 그립니다.
 
 | 파일 | 내용 |
-|---|---|
-| `assets/sheets/<kind>.png` | working, blocked, celebrate, resting 순서로 배치한 포즈 4개. |
-| `assets/frames/<kind>-<pose>.png` | 한 포즈의 애니메이션 프레임. 이 파일은 선택 사항입니다. |
-| `assets/menubar-icon.png` | 메뉴 막대 아이콘. |
-| `assets/sheets/manifest.json` | 이미지 생성 방법과 프롬프트. |
+| --- | --- |
+| `assets/sheets/<kind>.png` | 포즈 4개: working, blocked, celebrate, resting |
+| `assets/frames/<kind>-<pose>.png` | 한 포즈의 애니메이션(선택). working과 celebrate는 4장, blocked와 resting은 2장 |
+| `assets/sheets/manifest.json` | 이미지를 만든 방법과 프롬프트 |
+| `assets/menubar-icon.png` | 메뉴 막대 아이콘 |
 
-`<kind>`를 캐릭터 이름으로 바꿉니다. `<pose>`는 다음 표의 포즈 이름으로 바꿉니다.
+애니메이션 파일이 없으면 시트에 있는 포즈를 그대로 씁니다. 프레임은 발 위치와 몸의 가로 중심을
+기준으로 맞춰서 움직일 때 떨리지 않습니다.
 
-| 포즈 이름 | 프레임 수 |
-|---|---|
-| `working` | 4 |
-| `blocked` | 2 |
-| `celebrate` | 4 |
-| `resting` | 2 |
+버그 제보와 풀 리퀘스트를 환영합니다.
 
-애니메이션 파일이 없으면 기본 이미지 시트의 포즈를 사용합니다.
-
-앱은 발 위치와 불투명 픽셀의 가로 무게중심을 기준으로 프레임을 정렬합니다. 이 정렬은 프레임 전환 시 불필요한 흔들림을 줄입니다.
-
-Claude와 Codex 캐릭터는 팬 아트입니다. 이 프로젝트는 Anthropic 또는 OpenAI와 제휴 관계가 없습니다.
-
-## 소스 파일
-
-| 파일 | 기능 |
-|---|---|
-| `src/main.swift` | 명령 옵션을 읽고 앱 창과 장면을 만듭니다. 상태 확인 주기를 설정합니다. |
-| `src/Herdr.swift` | Herdr 에이전트 상태를 읽고 데모 에이전트를 만듭니다. |
-| `src/Sprites.swift` | 캐릭터를 선택하고 이미지 프레임을 준비합니다. |
-| `src/Pet.swift` | 펫의 움직임과 화면 가장자리 이동 경로를 제어합니다. |
-| `src/Scene.swift` | 펫을 추가하거나 제거합니다. 프레임을 갱신하고 화면 갱신을 멈춥니다. |
-| `src/Overlay.swift` | 투명 창을 만들고 모임 영역을 관리합니다. |
-| `src/Controls.swift` | 메뉴 막대 아이콘과 설정 패널을 만듭니다. |
-| `src/Preferences.swift` | 설정을 읽고 저장합니다. |
-| `src/DevTools.swift` | 자체 검사를 실행하고 프레임을 내보냅니다. |
+Claude와 Codex 캐릭터는 팬 아트입니다. 이 프로젝트는 Anthropic, OpenAI와 관련이 없습니다.

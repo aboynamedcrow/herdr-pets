@@ -13,7 +13,7 @@ final class Controls: NSObject {
         let icon = NSImage(contentsOf: projectRoot.appendingPathComponent("assets/menubar-icon.png"))
         icon?.size = NSSize(width: 16, height: 16)
         icon?.isTemplate = true   // Tints to match light/dark menu bar
-        icon?.accessibilityDescription = "Agent Pets"
+        icon?.accessibilityDescription = "herdr-pets"
         item.button?.image = icon
         item.button?.imagePosition = .imageLeading
         item.button?.target = self
@@ -24,7 +24,7 @@ final class Controls: NSObject {
         characters.selectedSegment = preferences.allCharacters ? 1 : 0
         let quit = NSButton(title: "종료", target: NSApp, action: #selector(NSApplication.terminate(_:)))
         let content = stack([
-            stack([label("Agent Pets", size: 17, weight: .semibold), label("기다리는 에이전트가 달려와요", size: 12, secondary: true), statusLabel], spacing: 4),
+            stack([label("herdr-pets", size: 17, weight: .semibold), label("기다리는 에이전트가 달려와요", size: 12, secondary: true), statusLabel], spacing: 4),
             section("캐릭터", [characters, characterNote, gallery]),
             section("화면", [displayCard()]),
             separator(),

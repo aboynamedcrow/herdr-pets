@@ -1,5 +1,5 @@
-id = "dev.minung.agent-pets"
-name = "Agent Pets"
+id = "dev.minung.herdr-pets"
+name = "herdr-pets"
 version = "0.1.0"
 min_herdr_version = "0.9.3"
 description = "One pet per agent on the macOS screen. Blocked agents run to the pointer."

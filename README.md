@@ -1,131 +1,136 @@
-# Agent Pets
+# herdr-pets
 
 English | [한국어](README.ko.md)
 
-Agent Pets shows the status of Herdr agents on macOS. Each agent has one pet.
+![The 14 herdr-pets characters](assets/readme/characters.png)
 
-Pets stay in a set area of the screen. This area is the **home area**. When an agent needs input, its pet moves along the screen edge toward the pointer.
+![Pets gathered above the Dock, one running toward the pointer](assets/readme/demo.gif)
 
-## Requirements
+herdr-pets is a Herdr plugin that puts a pet on your macOS desktop for each Herdr agent.  
+The pets stay together above the Dock. When an agent is blocked, its pet runs to your pointer and waves.  
+When the agent is unblocked, the pet goes back home.
 
-- macOS with an active desktop session.
-- Xcode Command Line Tools.
-- Herdr for live agent status. Demo mode does not require Herdr.
+## Quick start
 
-Keep the executable in `bin`. Keep the `assets` folder in the project folder.
+Requirements:
 
-## Install as a Herdr plugin
+- macOS
+- [Herdr](https://github.com/ogulcancelik/herdr) 0.9.3 or later
+- Xcode Command Line Tools (the app is built with Swift on install)
 
 ```sh
-herdr plugin install <owner>/herdr-agent-pets   # builds bin/pets
+herdr plugin install hmu332233/herdr-pets
 ```
 
-For a local checkout, build `bin/pets` first (see below), then run `herdr plugin link .`. Herdr does not build linked plugins.
+After install, Herdr starts the app and the pets appear the first time an agent changes status.
+The app also starts automatically when the Herdr server restarts.
 
-The plugin starts the app when the Herdr server starts and on each agent status change. Only one app runs at a time. The app quits 30 seconds after the Herdr server stops. If you quit the app from the menu bar, the next status change starts it again. To turn it off, run `herdr plugin disable dev.minung.agent-pets`, then quit the app from the menu bar. Quit the app the same way after you update or uninstall the plugin.
+A pet icon appears in the menu bar. The number next to it is the count of blocked agents.
+Click the icon to open the settings panel.
 
-## Build and start
+## How it works
 
-1. Open a terminal in the project folder.
-2. Build the app:
+![One pet in the working, blocked, done, and idle poses](assets/readme/poses.png)
 
-   ```sh
-   mkdir -p bin
-   swiftc -O -swift-version 5 src/*.swift -o bin/pets
-   ```
+| Herdr status | Pet |
+| --- | --- |
+| `blocked` | Runs to your pointer, shows **!**, and waves |
+| `working` | Wanders around |
+| `done` | Celebrates and shows **✓** |
+| `idle`, `unknown` | Rests |
 
-3. Start the app:
-
-   ```sh
-   ./bin/pets
-   ```
-
-The app reads agent status with `herdr agent list` every two seconds. It finds `herdr` through `PATH`. To use a different executable, set `HERDR_BIN_PATH` to its path.
-
-To stop the app, open the menu bar panel and select **종료** (Quit). You can also press **Ctrl-C** in the terminal.
-
-## Command options
-
-| Command | Function |
-|---|---|
-| `./bin/pets --demo` | Show all 14 characters without Herdr. Change their status every 12 seconds. |
-| `./bin/pets --self-test` | Check image assets, character selection, and movement without an app window. |
-| `./bin/pets --export-frames <directory>` | Export images for frame alignment checks. Replace `<directory>` with an output path. |
-
-## Pet status
-
-The default home area is 260 × 80 pt. It is near the lower-right corner of the screen, above the Dock.
-
-| Agent status | Pet behavior |
-|---|---|
-| `working` | The pet moves inside the home area. It makes small movements during short stops. |
-| `idle`, `unknown` | The pet rests without movement. |
-| `done` | The pet shows a celebration, then rests. The green ✓ stays visible while the status is `done`. |
-| `blocked` | The pet jumps, moves to the nearest screen edge, and follows the edge toward the pointer. It shows an orange ! and waves. |
-
-A blocked pet follows the pointer when the pointer moves far enough. When the status changes, the pet returns to the home area.
-
-The movement path stays below the menu bar and above the Dock. The pet turns to keep its feet toward the screen edge. It turns gradually at corners.
-
-The app shows a maximum of 20 pets. If there are more agents, blocked agents have priority. The number next to the menu bar icon shows the number of blocked agents.
-
-The app uses 15 frames per second for normal movement and 30 for fast movement. It stops drawing when all pets are at rest.
+Pets never block clicks or take focus, and herdr-pets reads only agent status from Herdr.
 
 ## Settings
 
-Select the menu bar icon to open the settings panel. The panel shows the agent count and the blocked agent count. The status text is orange when an agent is blocked.
+Click the menu bar icon to open the settings panel. The top shows the number of agents and
+blocked agents. The labels are in Korean.
 
-The controls use Korean labels.
+<img src="assets/readme/settings.png" alt="herdr-pets settings panel" width="340">
 
-| Control | Function |
-|---|---|
-| **에이전트 종류대로** (By agent type) | Use dedicated characters for Claude and Codex. Select one of the other 12 characters for each other agent type. |
-| **14종 골고루** (All 14 characters) | Assign a character to each agent from all 14 characters. |
-| **펫 표시** (Show pets) | Show or hide the pets. |
-| **펫 크기** (Pet size) | Set the pet size from 16 to 72 pt. The ! and ✓ marks keep the same size. |
-| **동작 줄이기** (Reduce motion) | Use fixed poses instead of movement. The app also uses the macOS Reduce Motion setting. |
-| **모이는 곳 → 정하기…** (Set home area) | Open the home area editor. |
+| Setting | Description |
+| --- | --- |
+| **에이전트 종류대로** (By agent type) | Claude and Codex get their own characters; other agents get a fixed character per agent type |
+| **14종 골고루** (All 14 characters) | Each agent gets one of all 14 characters |
+| **펫 표시** (Show pets) | Show or hide the pets |
+| **펫 크기** (Pet size) | 16–72 pt. The **!** and **✓** keep their size |
+| **동작 줄이기** (Reduce motion) | Pets show status with poses only, without moving. The macOS Reduce Motion setting also applies |
+| **모이는 곳 → 정하기…** (Set home area) | Move and resize the translucent window, then close it to save |
+| **종료** (Quit) | Quit the app |
 
-The character gallery dims characters that are not available with the current settings and agent types.
+Settings are saved in the plugin config folder. To find it:
 
-The app saves settings and the home area in `pets-preferences.json` in the project folder. When Herdr starts the app as a plugin, the file is in the plugin config folder (`herdr plugin config-dir dev.minung.agent-pets`).
+```sh
+herdr plugin config-dir dev.minung.herdr-pets
+```
 
-## Character images
+## Turn off or uninstall
 
-Use transparent PNG files. Put each pose or frame in a cell of equal width. Arrange the cells in one horizontal row.
+If you quit the app from the menu bar, the plugin starts it again the next time an agent
+changes status. To turn it off, disable the plugin and then quit the app from the menu bar.
+
+```sh
+herdr plugin disable dev.minung.herdr-pets    # to remove: herdr plugin uninstall dev.minung.herdr-pets
+```
+
+After you update or uninstall the plugin, quit the running app from the menu bar as well.
+The app quits by itself about 30 seconds after the Herdr server stops.
+
+## Troubleshooting
+
+If no pets appear, check the plugin and its recent runs.
+
+```sh
+herdr plugin list --plugin dev.minung.herdr-pets
+herdr plugin log list --plugin dev.minung.herdr-pets --limit 20
+```
+
+- Right after install, pets appear once an agent changes status.
+- If a run shows exit code 1, `bin/pets` was not built.
+  Install Xcode Command Line Tools with `xcode-select --install`, then reinstall the plugin.
+- Only one app runs at a time. With several Herdr sessions, only the session that started it first gets pets.
+
+## Development
+
+```sh
+mkdir -p bin
+swiftc -O -swift-version 5 src/*.swift -o bin/pets
+./bin/pets --self-test
+```
+
+To connect a local checkout to Herdr, build it first and then link it. Herdr does not build
+linked plugins.
+
+```sh
+herdr plugin link .
+```
+
+You can also run the app directly.
+
+| Command | Description |
+| --- | --- |
+| `./bin/pets` | Show pets for running Herdr agents |
+| `./bin/pets --demo` | Show all 14 characters without Herdr. Their status changes every 12 seconds |
+| `./bin/pets --self-test` | Check images, character selection, and movement without a window |
+| `./bin/pets --export-frames <directory>` | Export frame images to check that animations do not jitter |
+
+When run directly, the app finds `herdr` through `PATH` or `HERDR_BIN_PATH`, and saves
+settings in `pets-preferences.json` in the project folder.
+
+### Character images
+
+All images are transparent PNGs, with poses or frames side by side in equal-width cells.
 
 | File | Contents |
-|---|---|
-| `assets/sheets/<kind>.png` | Four poses, in this order: working, blocked, celebrate, resting. |
-| `assets/frames/<kind>-<pose>.png` | Optional animation frames for one pose. |
-| `assets/menubar-icon.png` | The menu bar icon. |
-| `assets/sheets/manifest.json` | Image generation methods and prompts. |
+| --- | --- |
+| `assets/sheets/<kind>.png` | Four poses: working, blocked, celebrate, resting |
+| `assets/frames/<kind>-<pose>.png` | Optional animation for one pose: 4 frames for working and celebrate, 2 for blocked and resting |
+| `assets/sheets/manifest.json` | How the images were made, with prompts |
+| `assets/menubar-icon.png` | Menu bar icon |
 
-Replace `<kind>` with the character name. Replace `<pose>` with a pose name from this table:
+Without an animation file, the pose from the sheet is used. Frames are aligned at the feet and
+the horizontal center of the body, so they do not jitter.
 
-| Pose name | Frame count |
-|---|---|
-| `working` | 4 |
-| `blocked` | 2 |
-| `celebrate` | 4 |
-| `resting` | 2 |
-
-If an animation file is absent, the app uses the pose from the main image sheet.
-
-The app aligns frames at the feet and at the horizontal center of the opaque pixels. This reduces unwanted movement between frames.
+Bug reports and pull requests are welcome.
 
 The Claude and Codex characters are fan art. This project is not affiliated with Anthropic or OpenAI.
-
-## Source files
-
-| File | Function |
-|---|---|
-| `src/main.swift` | Read command options, create the app window and scene, and schedule status checks. |
-| `src/Herdr.swift` | Read Herdr agent status and create demo agents. |
-| `src/Sprites.swift` | Select characters and prepare image frames. |
-| `src/Pet.swift` | Control pet movement and the path along the screen edge. |
-| `src/Scene.swift` | Add and remove pets, update frames, and pause drawing. |
-| `src/Overlay.swift` | Create the transparent window and manage the home area. |
-| `src/Controls.swift` | Create the menu bar icon and settings panel. |
-| `src/Preferences.swift` | Read and save settings. |
-| `src/DevTools.swift` | Run the self-test and export frames. |
