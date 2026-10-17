@@ -1,0 +1,75 @@
+{
+  "generator": "Built-in image_gen",
+  "referenceDirectory": "design/concept-directions",
+  "transparentBackground": true,
+  "poses": [
+    "working",
+    "blocked",
+    "celebrate",
+    "resting"
+  ],
+  "prompt": "Edit this exact character concept sheet into a production-ready transparent sprite strip. Preserve the original character identity, palette, soft rounded silhouette, proportions, clean capsule eyes, subtle flat shading, and ALL FOUR original poses as closely as possible. Do not redesign it as geometric primitives. Remove the entire gray background cleanly to true transparent alpha. No shadows on ground, no labels, no grid, no decorative elements. Four separate complete characters in one horizontal row, one per equal-width cell, ample transparent gutters, all fully inside frame, in original order: walking/working, asking for attention with raised arm, celebrating, resting. The upright characters should have the same apparent scale; the resting character naturally shorter but same body volume. Polished clean edges, matte minimal 2D illustration, no outlines, no highlights added. Landscape canvas approximately 4:1. Keep all four characters distinct and unconnected.",
+  "retryPrompt": "Preserve exact character proportions, palette and four poses. Remove only background to true transparent alpha; clean isolated silhouettes; no text or added objects.",
+  "files": [
+    {
+      "name": "blob",
+      "file": "blob.png",
+      "reference": "blob.png"
+    },
+    {
+      "name": "robot",
+      "file": "robot.png",
+      "reference": "robot.png"
+    },
+    {
+      "name": "paper",
+      "file": "paper.png",
+      "reference": "paper.png"
+    },
+    {
+      "name": "cat",
+      "file": "cat.png",
+      "reference": "animal.png"
+    },
+    {
+      "name": "mushroom",
+      "file": "mushroom.png",
+      "reference": "mushroom.png"
+    },
+    {
+      "name": "ghost",
+      "file": "ghost.png",
+      "reference": "ghost.png"
+    },
+    {
+      "name": "stone",
+      "file": "stone.png",
+      "reference": "stone.png"
+    },
+    {
+      "name": "star",
+      "file": "star.png",
+      "reference": "star.png"
+    },
+    {
+      "name": "seed",
+      "file": "seed.png",
+      "reference": "seed.png"
+    },
+    {
+      "name": "cloud",
+      "file": "cloud.png",
+      "reference": "cloud.png"
+    },
+    {
+      "name": "octopus",
+      "file": "octopus.png",
+      "reference": "octopus.png"
+    },
+    {
+      "name": "pixel",
+      "file": "pixel.png",
+      "reference": "pixel.png"
+    }
+  ]
+}
