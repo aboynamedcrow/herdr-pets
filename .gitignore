@@ -1,0 +1,11 @@
+# 빌드 결과
+bin/
+
+# 실행 중 저장되는 개인 설정
+pets-preferences.json
+pets-frame.txt
+
+.DS_Store
+
+# 디자인 시안 (실행에 필요 없음)
+design/
