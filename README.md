@@ -14,6 +14,16 @@ Pets stay in a set area of the screen. This area is the **home area**. When an a
 
 Keep the executable in `bin`. Keep the `assets` folder in the project folder.
 
+## Install as a Herdr plugin
+
+```sh
+herdr plugin install <owner>/herdr-agent-pets   # builds bin/pets
+```
+
+For a local checkout, build `bin/pets` first (see below), then run `herdr plugin link .`. Herdr does not build linked plugins.
+
+The plugin starts the app when the Herdr server starts and on each agent status change. Only one app runs at a time. The app quits 30 seconds after the Herdr server stops. If you quit the app from the menu bar, the next status change starts it again. To turn it off, run `herdr plugin disable dev.minung.agent-pets`, then quit the app from the menu bar. Quit the app the same way after you update or uninstall the plugin.
+
 ## Build and start
 
 1. Open a terminal in the project folder.
@@ -80,7 +90,7 @@ The controls use Korean labels.
 
 The character gallery dims characters that are not available with the current settings and agent types.
 
-The app saves settings in `pets-preferences.json`. It saves the home area in `pets-frame.txt`. Both files are in the project folder.
+The app saves settings in `pets-preferences.json`. It saves the home area in `pets-frame.txt`. Both files are in the project folder. When Herdr starts the app as a plugin, they are in the plugin config folder (`herdr plugin config-dir dev.minung.agent-pets`).
 
 ## Character images
 

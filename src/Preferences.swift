@@ -6,7 +6,7 @@ struct Preferences: Codable {
     var reducedMotion = false
     var allCharacters = false          // false: character by agent kind, true: one of 14 per agent
 
-    static let file = projectRoot.appendingPathComponent("pets-preferences.json")
+    static let file = configDir.appendingPathComponent("pets-preferences.json")
 
     init() {}
 

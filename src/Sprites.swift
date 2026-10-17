@@ -1,9 +1,13 @@
 import AppKit
 import SpriteKit
 
-// Parent folder of the executable (bin/pets). Assets and settings files are found here.
+// Parent folder of the executable (bin/pets). Assets are found here.
 let projectRoot = Bundle.main.executableURL!.resolvingSymlinksInPath()
     .deletingLastPathComponent().deletingLastPathComponent()
+
+// Settings go to the plugin config folder, because Herdr replaces the plugin folder on update.
+let launchedByPlugin = ProcessInfo.processInfo.environment["HERDR_PLUGIN_CONFIG_DIR"] != nil
+let configDir = ProcessInfo.processInfo.environment["HERDR_PLUGIN_CONFIG_DIR"].map { URL(fileURLWithPath: $0) } ?? projectRoot
 
 let baseSize: CGFloat = 48    // Reference height of character art (pt)
 let footOffset: CGFloat = 18  // Distance from the pet's anchor down to its feet (pt)

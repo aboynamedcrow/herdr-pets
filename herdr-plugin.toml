@@ -1,0 +1,18 @@
+id = "dev.minung.agent-pets"
+name = "Agent Pets"
+version = "0.1.0"
+min_herdr_version = "0.9.3"
+description = "One pet per agent on the macOS screen. Blocked agents run to the pointer."
+platforms = ["macos"]
+
+[[build]]
+command = ["sh", "-c", "mkdir -p bin && swiftc -O -swift-version 5 src/*.swift -o bin/pets"]
+
+# bin/pets exits at once if it is already running, so starting it on every event is cheap.
+[[startup]]
+command = ["sh", "-c", "test -x bin/pets || exit 1; ./bin/pets >/dev/null 2>&1 &"]
+
+# Also starts the app at the next status change after install or link, without restarting the Herdr server.
+[[events]]
+on = "pane.agent_status_changed"
+command = ["sh", "-c", "test -x bin/pets || exit 1; ./bin/pets >/dev/null 2>&1 &"]

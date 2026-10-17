@@ -14,6 +14,16 @@ Agent Pets는 macOS에서 Herdr 에이전트의 상태를 보여줍니다. 에�
 
 실행 파일은 `bin` 폴더에 둡니다. `assets` 폴더는 프로젝트 폴더에 둡니다.
 
+## Herdr 플러그인으로 설치
+
+```sh
+herdr plugin install <owner>/herdr-agent-pets   # bin/pets를 빌드합니다
+```
+
+로컬 폴더를 쓰려면 먼저 아래 방법으로 `bin/pets`를 빌드한 뒤 `herdr plugin link .`를 실행합니다. Herdr는 link한 플러그인을 빌드하지 않습니다.
+
+플러그인은 Herdr 서버가 시작될 때와 에이전트 상태가 바뀔 때마다 앱을 실행합니다. 앱은 하나만 실행됩니다. Herdr 서버가 멈추면 30초 뒤 앱도 종료됩니다. 메뉴 막대에서 앱을 종료해도 다음 상태 변화 때 다시 실행됩니다. 끄려면 `herdr plugin disable dev.minung.agent-pets`를 실행한 뒤 메뉴 막대에서 앱을 종료합니다. 플러그인을 업데이트하거나 제거한 뒤에도 같은 방법으로 앱을 종료합니다.
+
 ## 빌드 및 실행
 
 1. 프로젝트 폴더에서 터미널을 엽니다.
@@ -80,7 +90,7 @@ Agent Pets는 macOS에서 Herdr 에이전트의 상태를 보여줍니다. 에�
 
 캐릭터 모음에서는 현재 설정과 에이전트 종류로 표시할 수 없는 캐릭터가 흐리게 보입니다.
 
-앱 설정은 `pets-preferences.json`에 저장합니다. 모임 영역은 `pets-frame.txt`에 저장합니다. 두 파일은 프로젝트 폴더에 있습니다.
+앱 설정은 `pets-preferences.json`에 저장합니다. 모임 영역은 `pets-frame.txt`에 저장합니다. 두 파일은 프로젝트 폴더에 있습니다. Herdr 플러그인으로 실행되면 플러그인 설정 폴더(`herdr plugin config-dir dev.minung.agent-pets`)에 있습니다.
 
 ## 캐릭터 이미지
 

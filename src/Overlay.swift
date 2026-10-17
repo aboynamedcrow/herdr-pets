@@ -2,7 +2,7 @@ import AppKit
 import SpriteKit
 
 // The crowd area (screen coordinates) is moved with --edit or the panel's "Set…" button.
-let areaFile = projectRoot.appendingPathComponent("pets-frame.txt")
+let areaFile = configDir.appendingPathComponent("pets-frame.txt")
 
 // Not used if it overlaps no connected screen (monitor unplugged).
 func savedArea() -> NSRect? {

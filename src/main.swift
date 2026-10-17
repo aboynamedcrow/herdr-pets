@@ -6,13 +6,18 @@ import SpriteKit
 let arguments = CommandLine.arguments
 let demo = arguments.contains("--demo")
 
-PetKind.allCases.forEach { _ = Sprites.frames($0) }   // Preload images. Stops right here if an asset is broken
-
 if arguments.contains("--self-test") { selfTest(); exit(0) }
 if let i = arguments.firstIndex(of: "--export-frames"), i + 1 < arguments.count {
     try exportFrames(to: URL(fileURLWithPath: arguments[i + 1]))
     exit(0)
 }
+
+// One instance only. The plugin starts the app on every status event. The lock is released when the process exits.
+// ponytail: one lock for all Herdr sessions, so only the first session gets pets. Key the lock by HERDR_SOCKET_PATH if several sessions matter.
+let lock = open(FileManager.default.temporaryDirectory.appendingPathComponent("herdr-agent-pets.lock").path, O_CREAT | O_RDWR, 0o644)
+guard flock(lock, LOCK_EX | LOCK_NB) == 0 else { exit(0) }
+
+PetKind.allCases.forEach { _ = Sprites.frames($0) }   // Preload images. Stops right here if an asset is broken
 
 NSApplication.shared.setActivationPolicy(.accessory)   // No Dock icon, never takes focus
 
@@ -38,6 +43,7 @@ if arguments.contains("--settings") { DispatchQueue.main.async { controls.show()
 
 // Skip while a read is in flight.
 var polling = false
+var failures = 0
 func poll() {
     guard !polling else { return }
     polling = true
@@ -45,6 +51,9 @@ func poll() {
         let agents = demo ? demoAgents() : fetchAgents()
         DispatchQueue.main.async {
             polling = false
+            failures = agents == nil ? failures + 1 : 0
+            if launchedByPlugin && failures >= 15 { exit(0) }   // Herdr server is gone for 30 seconds
+
             if let agents { scene.apply(agents) }   // Keep the previous state if the read fails
             controls.refresh(connected: agents != nil)
         }
