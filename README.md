@@ -49,8 +49,6 @@ To stop the app, open the menu bar panel and select **종료** (Quit). You can a
 | Command | Function |
 |---|---|
 | `./bin/pets --demo` | Show all 14 characters without Herdr. Change their status every 12 seconds. |
-| `./bin/pets --edit` | Open the home area editor. Close the editor to save the area. |
-| `./bin/pets --settings` | Open the settings panel at startup. |
 | `./bin/pets --self-test` | Check image assets, character selection, and movement without an app window. |
 | `./bin/pets --export-frames <directory>` | Export images for frame alignment checks. Replace `<directory>` with an output path. |
 
@@ -86,11 +84,11 @@ The controls use Korean labels.
 | **펫 표시** (Show pets) | Show or hide the pets. |
 | **펫 크기** (Pet size) | Set the pet size from 16 to 72 pt. The ! and ✓ marks keep the same size. |
 | **동작 줄이기** (Reduce motion) | Use fixed poses instead of movement. The app also uses the macOS Reduce Motion setting. |
-| **모이는 곳 → 정하기…** (Set home area) | Open the home area editor. This has the same function as `--edit`. |
+| **모이는 곳 → 정하기…** (Set home area) | Open the home area editor. |
 
 The character gallery dims characters that are not available with the current settings and agent types.
 
-The app saves settings in `pets-preferences.json`. It saves the home area in `pets-frame.txt`. Both files are in the project folder. When Herdr starts the app as a plugin, they are in the plugin config folder (`herdr plugin config-dir dev.minung.agent-pets`).
+The app saves settings and the home area in `pets-preferences.json` in the project folder. When Herdr starts the app as a plugin, the file is in the plugin config folder (`herdr plugin config-dir dev.minung.agent-pets`).
 
 ## Character images
 

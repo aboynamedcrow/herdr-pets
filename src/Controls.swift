@@ -50,7 +50,7 @@ final class Controls: NSObject {
         let still = NSSwitch()
         still.state = preferences.reducedMotion ? .on : .off
         still.target = self; still.action = #selector(changeMotion(_:))
-        let size = NSSlider(value: preferences.size, minValue: 16, maxValue: 72, target: self, action: #selector(changeSize(_:)))
+        let size = NSSlider(value: preferences.size, minValue: Preferences.sizeRange.lowerBound, maxValue: Preferences.sizeRange.upperBound, target: self, action: #selector(changeSize(_:)))
         sizeLabel.stringValue = "\(Int(preferences.size)) pt"
 
         let rows = stack([

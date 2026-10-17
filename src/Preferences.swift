@@ -1,12 +1,17 @@
 import AppKit
 
 struct Preferences: Codable {
-    var size: Double = 24              // pt, 16~72
+    var size: Double = 24              // pt, sizeRange
     var visible = true
     var reducedMotion = false
     var allCharacters = false          // false: character by agent kind, true: one of 14 per agent
+    var area: CGRect? = nil            // Crowd area (screen coordinates). nil: default area
 
-    static let file = configDir.appendingPathComponent("pets-preferences.json")
+    static let sizeRange = 16.0...72.0
+
+    // Herdr replaces the plugin folder on update, so a plugin keeps settings in its config folder.
+    static let file = (ProcessInfo.processInfo.environment["HERDR_PLUGIN_CONFIG_DIR"].map { URL(fileURLWithPath: $0) } ?? projectRoot)
+        .appendingPathComponent("pets-preferences.json")
 
     init() {}
 
@@ -17,11 +22,12 @@ struct Preferences: Codable {
         visible = try c.decodeIfPresent(Bool.self, forKey: .visible) ?? visible
         reducedMotion = try c.decodeIfPresent(Bool.self, forKey: .reducedMotion) ?? reducedMotion
         allCharacters = try c.decodeIfPresent(Bool.self, forKey: .allCharacters) ?? allCharacters
+        area = try c.decodeIfPresent(CGRect.self, forKey: .area)
     }
 
     static func read() -> Preferences {
         guard let data = try? Data(contentsOf: file), var value = try? JSONDecoder().decode(Preferences.self, from: data) else { return Preferences() }
-        value.size = min(72, max(16, value.size))
+        value.size = min(sizeRange.upperBound, max(sizeRange.lowerBound, value.size))
         return value
     }
 

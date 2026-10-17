@@ -3,7 +3,6 @@ bin/
 
 # 실행 중 저장되는 개인 설정
 pets-preferences.json
-pets-frame.txt
 
 .DS_Store
 

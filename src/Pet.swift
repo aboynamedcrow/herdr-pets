@@ -1,6 +1,5 @@
 import SpriteKit
 
-let maxPets = 20
 let dashSpeed: CGFloat = 320      // pt/s
 let returnSpeed: CGFloat = 200
 let acceleration: CGFloat = 700   // pt/s²
@@ -128,27 +127,29 @@ final class Pet: SKNode {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func setStatus(_ s: String) {
-        guard s != status else { return }
+    // Returns false if the status is unchanged.
+    @discardableResult
+    func setStatus(_ s: String) -> Bool {
+        guard s != status else { return false }
         status = s
         statusSince = nil
         wanderTarget = nil
         goalS = nil
         badgeLabel.text = s == "blocked" ? "!" : "✓"
         badge.fillColor = s == "blocked" ? .systemOrange : .systemGreen
+        return true
     }
 
     // true while still moving. When all return false, the scene stops drawing.
     func step(t: Double, dt: CGFloat, world w: World) -> Bool {
         if statusSince == nil { statusSince = t }
         let age = t - statusSince!
-        let celebrating = status == "done" && age < celebrationTime
         updateLook(scale: w.scale)
 
         if w.still { stayStill(w); return false }
         if status == "blocked" { return stepBlocked(t: t, age: age, dt: dt, world: w) }
         if edgeS != nil || !w.band.insetBy(dx: -2, dy: -2).contains(position) { return stepReturning(t: t, dt: dt, world: w) }
-        return stepInCrowd(t: t, age: age, celebrating: celebrating, dt: dt, world: w)
+        return stepInCrowd(t: t, age: age, dt: dt, world: w)
     }
 
     private func updateLook(scale: CGFloat) {
@@ -185,8 +186,8 @@ final class Pet: SKNode {
         return true
     }
 
-    private func stepInCrowd(t: Double, age: Double, celebrating: Bool, dt: CGFloat, world w: World) -> Bool {
-        if celebrating {
+    private func stepInCrowd(t: Double, age: Double, dt: CGFloat, world w: World) -> Bool {
+        if status == "done" && age < celebrationTime {
             show(.celebrate, frame: Int(age / 0.2), loop: false)
             body.position.y = hop(age, length: 0.8, height: 6)
             return true

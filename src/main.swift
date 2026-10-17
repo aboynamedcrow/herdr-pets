@@ -5,6 +5,7 @@ import SpriteKit
 
 let arguments = CommandLine.arguments
 let demo = arguments.contains("--demo")
+let launchedByPlugin = ProcessInfo.processInfo.environment["HERDR_PLUGIN_ID"] != nil
 
 if arguments.contains("--self-test") { selfTest(); exit(0) }
 if let i = arguments.firstIndex(of: "--export-frames"), i + 1 < arguments.count {
@@ -12,16 +13,16 @@ if let i = arguments.firstIndex(of: "--export-frames"), i + 1 < arguments.count 
     exit(0)
 }
 
-// One instance only. The plugin starts the app on every status event. The lock is released when the process exits.
+// One instance only (demo excepted). The plugin starts the app on every status event. The lock is released when the process exits.
 // ponytail: one lock for all Herdr sessions, so only the first session gets pets. Key the lock by HERDR_SOCKET_PATH if several sessions matter.
 let lock = open(FileManager.default.temporaryDirectory.appendingPathComponent("herdr-agent-pets.lock").path, O_CREAT | O_RDWR, 0o644)
-guard flock(lock, LOCK_EX | LOCK_NB) == 0 else { exit(0) }
+guard demo || flock(lock, LOCK_EX | LOCK_NB) == 0 else { exit(0) }
 
 PetKind.allCases.forEach { _ = Sprites.frames($0) }   // Preload images. Stops right here if an asset is broken
 
 NSApplication.shared.setActivationPolicy(.accessory)   // No Dock icon, never takes focus
 
-var area = savedArea() ?? defaultArea()   // Crowd area (screen coordinates)
+var area = preferences.area ?? defaultArea()   // Crowd area (screen coordinates). Saved to preferences when the editor closes
 let scene = PetScene(size: CGSize(width: 1, height: 1))
 scene.backgroundColor = .clear
 scene.scaleMode = .resizeFill
@@ -38,8 +39,6 @@ if preferences.visible { overlay.orderFrontRegardless() }
 NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { _ in layout() }
 NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main) { _ in scene.wake() }   // macOS Reduce Motion
 controls.install()
-if arguments.contains("--edit") { areaEditor.show() }
-if arguments.contains("--settings") { DispatchQueue.main.async { controls.show() } }
 
 // Skip while a read is in flight.
 var polling = false

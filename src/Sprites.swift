@@ -5,10 +5,6 @@ import SpriteKit
 let projectRoot = Bundle.main.executableURL!.resolvingSymlinksInPath()
     .deletingLastPathComponent().deletingLastPathComponent()
 
-// Settings go to the plugin config folder, because Herdr replaces the plugin folder on update.
-let launchedByPlugin = ProcessInfo.processInfo.environment["HERDR_PLUGIN_CONFIG_DIR"] != nil
-let configDir = ProcessInfo.processInfo.environment["HERDR_PLUGIN_CONFIG_DIR"].map { URL(fileURLWithPath: $0) } ?? projectRoot
-
 let baseSize: CGFloat = 48    // Reference height of character art (pt)
 let footOffset: CGFloat = 18  // Distance from the pet's anchor down to its feet (pt)
 
@@ -105,7 +101,7 @@ enum Sprites {
     // Downscale textures to the max display size (72pt, Retina 2x) to save memory.
     private static func frame(_ crop: (image: CGImage, centroidX: CGFloat), scale: CGFloat, _ kind: PetKind) -> Frame {
         let size = CGSize(width: CGFloat(crop.image.width) * scale, height: CGFloat(crop.image.height) * scale)
-        let pixels = 2 * 72 / baseSize
+        let pixels = 2 * CGFloat(Preferences.sizeRange.upperBound) / baseSize
         var image = crop.image
         if CGFloat(image.width) > size.width * pixels {
             let context = bitmap(width: Int((size.width * pixels).rounded(.up)), height: Int((size.height * pixels).rounded(.up)))
@@ -133,7 +129,7 @@ enum Sprites {
 
 private struct AlphaMask {
     let width: Int, height: Int
-    private var alpha: [UInt8]
+    private let rgba: [UInt8]
     private let columnCounts: [Int]   // Opaque pixel count per column
 
     init(_ image: CGImage) {
@@ -142,11 +138,11 @@ private struct AlphaMask {
         var pixels = [UInt8](repeating: 0, count: width * height * 4)
         let (w, h) = (width, height)
         pixels.withUnsafeMutableBytes { bitmap(width: w, height: h, data: $0.baseAddress).draw(image, in: CGRect(x: 0, y: 0, width: w, height: h)) }
-        alpha = pixels
+        rgba = pixels
         columnCounts = (0..<w).map { x in (0..<h).reduce(0) { $0 + (pixels[($1 * w + x) * 4 + 3] > 32 ? 1 : 0) } }
     }
 
-    func opaque(_ x: Int, _ y: Int) -> Bool { alpha[(y * width + x) * 4 + 3] > 32 }
+    func opaque(_ x: Int, _ y: Int) -> Bool { rgba[(y * width + x) * 4 + 3] > 32 }
 
     // Emptiest column near the expected boundary, so art slightly past a cell edge isn't clipped.
     func emptiestColumn(near expected: Int, reach: Int) -> Int {

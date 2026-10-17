@@ -49,8 +49,6 @@ herdr plugin install <owner>/herdr-agent-pets   # bin/pets를 빌드합니다
 | 명령 | 기능 |
 |---|---|
 | `./bin/pets --demo` | Herdr 없이 14종의 캐릭터를 표시합니다. 12초마다 상태가 바뀝니다. |
-| `./bin/pets --edit` | 모임 영역 편집 창을 엽니다. 창을 닫으면 영역을 저장합니다. |
-| `./bin/pets --settings` | 앱 실행 시 설정 패널을 엽니다. |
 | `./bin/pets --self-test` | 앱 창 없이 이미지 파일, 캐릭터 배정, 움직임을 검사합니다. |
 | `./bin/pets --export-frames <directory>` | 프레임 정렬 검사에 사용할 이미지를 내보냅니다. `<directory>`를 출력 경로로 바꿉니다. |
 
@@ -86,11 +84,11 @@ herdr plugin install <owner>/herdr-agent-pets   # bin/pets를 빌드합니다
 | **펫 표시** | 펫을 표시하거나 숨깁니다. |
 | **펫 크기** | 펫 크기를 16~72 pt로 설정합니다. !와 ✓ 표시의 크기는 유지됩니다. |
 | **동작 줄이기** | 움직임 대신 고정된 포즈를 표시합니다. macOS의 동작 줄이기 설정도 적용합니다. |
-| **모이는 곳 → 정하기…** | 모임 영역 편집 창을 엽니다. `--edit`와 같은 기능입니다. |
+| **모이는 곳 → 정하기…** | 모임 영역 편집 창을 엽니다. |
 
 캐릭터 모음에서는 현재 설정과 에이전트 종류로 표시할 수 없는 캐릭터가 흐리게 보입니다.
 
-앱 설정은 `pets-preferences.json`에 저장합니다. 모임 영역은 `pets-frame.txt`에 저장합니다. 두 파일은 프로젝트 폴더에 있습니다. Herdr 플러그인으로 실행되면 플러그인 설정 폴더(`herdr plugin config-dir dev.minung.agent-pets`)에 있습니다.
+앱 설정과 모임 영역은 프로젝트 폴더의 `pets-preferences.json`에 저장합니다. Herdr 플러그인으로 실행되면 이 파일은 플러그인 설정 폴더(`herdr plugin config-dir dev.minung.agent-pets`)에 있습니다.
 
 ## 캐릭터 이미지
 

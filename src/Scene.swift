@@ -1,6 +1,8 @@
 import AppKit
 import SpriteKit
 
+let maxPets = 20
+
 // Scene coordinates = the whole screen the overlay covers.
 final class PetScene: SKScene {
     private(set) var pets: [String: Pet] = [:]    // terminal_id → pet
@@ -31,10 +33,7 @@ final class PetScene: SKScene {
                 pets[agent.terminal_id] = pet
                 return pet
             }()
-            if pet.status != agent.agent_status {
-                pet.setStatus(agent.agent_status)
-                changed = true
-            }
+            if pet.setStatus(agent.agent_status) { changed = true }
         }
         // Don't wake if nothing changed. Each wake reallocates a screen-sized draw buffer, which is costly.
         if changed { wake() }
