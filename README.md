@@ -44,19 +44,20 @@ Pets never block clicks or take focus, and herdr-pets reads only agent status fr
 ## Settings
 
 Click the menu bar icon to open the settings panel. The top shows the number of agents and
-blocked agents. The labels are in Korean.
+blocked agents.
 
-<img src="assets/readme/settings.png" alt="herdr-pets settings panel" width="340">
+<img src="assets/readme/settings-en.png" alt="herdr-pets settings panel" width="340">
 
 | Setting | Description |
 | --- | --- |
-| **에이전트 종류대로** (By agent type) | Claude and Codex get their own characters; other agents get a fixed character per agent type |
-| **14종 골고루** (All 14 characters) | Each agent gets one of all 14 characters |
-| **펫 표시** (Show pets) | Show or hide the pets |
-| **펫 크기** (Pet size) | 16–72 pt. The **!** and **✓** keep their size |
-| **동작 줄이기** (Reduce motion) | Pets show status with poses only, without moving. The macOS Reduce Motion setting also applies |
-| **모이는 곳 → 정하기…** (Set home area) | Move and resize the translucent window, then close it to save |
-| **종료** (Quit) | Quit the app |
+| **By agent type** | Claude and Codex get their own characters; other agents get a fixed character per agent type |
+| **All 14** | Each agent gets one of all 14 characters |
+| **Show pets** | Show or hide the pets |
+| **Pet size** | 16–72 pt. The **!** and **✓** keep their size |
+| **Reduce motion** | Pets show status with poses only, without moving. The macOS Reduce Motion setting also applies |
+| **Home area → Set…** | Move and resize the translucent window, then close it to save |
+| **Language** | 한국어 or English. Follows the macOS language at first |
+| **Quit** | Quit the app |
 
 Settings are saved in the plugin config folder. To find it:
 

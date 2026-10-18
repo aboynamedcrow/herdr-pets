@@ -6,6 +6,7 @@ struct Preferences: Codable {
     var reducedMotion = false
     var allCharacters = false          // false: character by agent kind, true: one of 14 per agent
     var area: CGRect? = nil            // Crowd area (screen coordinates). nil: default area
+    var language = Locale.preferredLanguages.first?.hasPrefix("ko") == true ? "ko" : "en"   // "ko" or "en". Defaults to the system language
 
     static let sizeRange = 16.0...72.0
 
@@ -23,6 +24,7 @@ struct Preferences: Codable {
         reducedMotion = try c.decodeIfPresent(Bool.self, forKey: .reducedMotion) ?? reducedMotion
         allCharacters = try c.decodeIfPresent(Bool.self, forKey: .allCharacters) ?? allCharacters
         area = try c.decodeIfPresent(CGRect.self, forKey: .area)
+        language = try c.decodeIfPresent(String.self, forKey: .language) ?? language
     }
 
     static func read() -> Preferences {
@@ -37,5 +39,8 @@ struct Preferences: Codable {
 }
 
 var preferences = Preferences.read()
+
+// UI text in the chosen language.
+func t(_ ko: String, _ en: String) -> String { preferences.language == "ko" ? ko : en }
 var petScale: CGFloat { CGFloat(preferences.size) / baseSize }
 var motionReduced: Bool { preferences.reducedMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }

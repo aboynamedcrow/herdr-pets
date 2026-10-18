@@ -8,6 +8,7 @@ final class Controls: NSObject {
     private let statusLabel = label("", size: 12, weight: .medium)
     private let characterNote = label("", size: 11, secondary: true)
     private let sizeLabel = label("", size: 12, secondary: true)
+    private var connected = true
 
     func install() {
         let icon = NSImage(contentsOf: projectRoot.appendingPathComponent("assets/menubar-icon.png"))
@@ -18,15 +19,20 @@ final class Controls: NSObject {
         item.button?.imagePosition = .imageLeading
         item.button?.target = self
         item.button?.action = #selector(toggle)
+        popover.behavior = .transient
+        build()
+    }
 
-        let characters = NSSegmentedControl(labels: ["에이전트 종류대로", "14종 골고루"], trackingMode: .selectOne,
+    // Builds the panel. Called again when the language changes.
+    private func build() {
+        let characters = NSSegmentedControl(labels: [t("에이전트 종류대로", "By agent type"), t("14종 골고루", "All 14")], trackingMode: .selectOne,
                                             target: self, action: #selector(changeCharacters(_:)))
         characters.selectedSegment = preferences.allCharacters ? 1 : 0
-        let quit = NSButton(title: "종료", target: NSApp, action: #selector(NSApplication.terminate(_:)))
+        let quit = NSButton(title: t("종료", "Quit"), target: NSApp, action: #selector(NSApplication.terminate(_:)))
         let content = stack([
-            stack([label("herdr-pets", size: 17, weight: .semibold), label("기다리는 에이전트가 달려와요", size: 12, secondary: true), statusLabel], spacing: 4),
-            section("캐릭터", [characters, characterNote, gallery]),
-            section("화면", [displayCard()]),
+            stack([label("herdr-pets", size: 17, weight: .semibold), label(t("기다리는 에이전트가 달려와요", "Blocked agents' pets come to you"), size: 12, secondary: true), statusLabel], spacing: 4),
+            section(t("캐릭터", "Characters"), [characters, characterNote, gallery]),
+            section(t("화면", "Display"), [displayCard()]),
             separator(),
             row(NSView(), quit),
         ], spacing: 16)
@@ -38,9 +44,8 @@ final class Controls: NSObject {
         popover.contentViewController = NSViewController()
         popover.contentViewController!.view = material
         popover.contentSize = material.fittingSize
-        popover.behavior = .transient
         refreshGallery()
-        refresh(connected: true)
+        refresh(connected: connected)
     }
 
     private func displayCard() -> NSView {
@@ -52,15 +57,19 @@ final class Controls: NSObject {
         still.target = self; still.action = #selector(changeMotion(_:))
         let size = NSSlider(value: preferences.size, minValue: Preferences.sizeRange.lowerBound, maxValue: Preferences.sizeRange.upperBound, target: self, action: #selector(changeSize(_:)))
         sizeLabel.stringValue = "\(Int(preferences.size)) pt"
+        let language = NSSegmentedControl(labels: ["한국어", "English"], trackingMode: .selectOne, target: self, action: #selector(changeLanguage(_:)))
+        language.selectedSegment = preferences.language == "ko" ? 0 : 1
 
         let rows = stack([
-            row(label("펫 표시", size: 13), visible),
+            row(label(t("펫 표시", "Show pets"), size: 13), visible),
             separator(),
-            stack([row(label("펫 크기", size: 13), sizeLabel), size], spacing: 6),
+            stack([row(label(t("펫 크기", "Pet size"), size: 13), sizeLabel), size], spacing: 6),
             separator(),
-            row(stack([label("동작 줄이기", size: 13), label("움직이지 않고 포즈로만 알려줘요", size: 11, secondary: true)], spacing: 2), still),
+            row(stack([label(t("동작 줄이기", "Reduce motion"), size: 13), label(t("움직이지 않고 포즈로만 알려줘요", "Shows status with poses only"), size: 11, secondary: true)], spacing: 2), still),
             separator(),
-            row(label("모이는 곳", size: 13), NSButton(title: "정하기…", target: self, action: #selector(editArea))),
+            row(label(t("모이는 곳", "Home area"), size: 13), NSButton(title: t("정하기…", "Set…"), target: self, action: #selector(editArea))),
+            separator(),
+            row(label(t("언어", "Language"), size: 13), language),
         ], spacing: 10)
         let card = NSView()
         card.wantsLayer = true
@@ -77,14 +86,15 @@ final class Controls: NSObject {
     }
 
     func refresh(connected: Bool) {
+        self.connected = connected
         let count = scene.agents.count
         let waiting = scene.agents.filter { $0.agent_status == "blocked" }.count
-        var text = demo ? "미리보기 · 펫 \(count)마리"
-            : !connected ? "Herdr 연결을 기다리는 중"
-            : count == 0 ? "실행 중인 에이전트가 없어요"
-            : waiting > 0 ? "에이전트 \(count) · \(waiting)개 기다리는 중"
-            : "에이전트 \(count)"
-        if count > scene.pets.count { text += " · \(count - scene.pets.count)개는 숨김" }   // Pets over the display limit
+        var text = demo ? t("미리보기 · 펫 \(count)마리", "Preview · \(count) pets")
+            : !connected ? t("Herdr 연결을 기다리는 중", "Waiting for Herdr")
+            : count == 0 ? t("실행 중인 에이전트가 없어요", "No agents running")
+            : waiting > 0 ? t("에이전트 \(count) · \(waiting)개 기다리는 중", "Agents \(count) · \(waiting) blocked")
+            : t("에이전트 \(count)", "Agents \(count)")
+        if count > scene.pets.count { text += t(" · \(count - scene.pets.count)개는 숨김", " · \(count - scene.pets.count) hidden") }   // Pets over the display limit
         statusLabel.stringValue = text
         statusLabel.textColor = waiting > 0 ? .systemOrange : .secondaryLabelColor
         item.button?.toolTip = text
@@ -93,8 +103,8 @@ final class Controls: NSObject {
 
     private func refreshGallery() {
         characterNote.stringValue = preferences.allCharacters
-            ? "에이전트마다 14종 중 하나가 정해져요"
-            : "Claude·Codex는 전용 캐릭터, 나머지는 종류별로 정해져요"
+            ? t("에이전트마다 14종 중 하나가 정해져요", "Each agent gets one of the 14")
+            : t("Claude·Codex는 전용 캐릭터, 나머지는 종류별로 정해져요", "Claude and Codex have their own; others by type")
         var possible: Set<PetKind> = preferences.allCharacters ? Set(PetKind.allCases) : [.claude, .codex]
         if !preferences.allCharacters { scene.agents.forEach { possible.insert(petKind(ofType: $0.agent)) } }
         gallery.arrangedSubviews.forEach { $0.removeFromSuperview() }
@@ -106,7 +116,7 @@ final class Controls: NSObject {
                 image.widthAnchor.constraint(equalToConstant: 32).isActive = true
                 image.heightAnchor.constraint(equalToConstant: 32).isActive = true
                 image.alphaValue = possible.contains(kind) ? 1 : 0.22
-                image.toolTip = possible.contains(kind) ? kind.title : "\(kind.title) · 지금 설정에서는 나오지 않아요"
+                image.toolTip = possible.contains(kind) ? kind.title : t("\(kind.title) · 지금 설정에서는 나오지 않아요", "\(kind.title) · Not used with this setting")
                 return image
             }
             let row = NSStackView(views: images)
@@ -142,6 +152,12 @@ final class Controls: NSObject {
         preferences.save()
         sizeLabel.stringValue = "\(Int(preferences.size)) pt"
         scene.wake()
+    }
+
+    @objc private func changeLanguage(_ sender: NSSegmentedControl) {
+        preferences.language = sender.selectedSegment == 0 ? "ko" : "en"
+        preferences.save()
+        build()
     }
 
     @objc private func editArea() {

@@ -43,7 +43,7 @@ final class AreaEditor: NSObject, NSWindowDelegate {
     func show() {
         if let window { window.makeKeyAndOrderFront(nil); return }
         let w = NSWindow(contentRect: area, styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-        w.title = "친구들이 머무를 곳"
+        w.title = t("친구들이 머무를 곳", "Home area")
         w.isReleasedWhenClosed = false
         w.isOpaque = false
         w.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.08)

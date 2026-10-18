@@ -15,18 +15,18 @@ enum PetKind: String, CaseIterable {
 
     var title: String {
         switch self {
-        case .blob: return "말랑이"
-        case .robot: return "로봇"
-        case .paper: return "종이 정령"
-        case .cat: return "고양이"
-        case .mushroom: return "버섯 요정"
-        case .ghost: return "유령"
-        case .stone: return "골렘"
-        case .star: return "별"
-        case .seed: return "씨앗"
-        case .cloud: return "구름"
-        case .octopus: return "문어"
-        case .pixel: return "픽셀 친구"
+        case .blob: return t("말랑이", "Blob")
+        case .robot: return t("로봇", "Robot")
+        case .paper: return t("종이 정령", "Paper Sprite")
+        case .cat: return t("고양이", "Cat")
+        case .mushroom: return t("버섯 요정", "Mushroom Fairy")
+        case .ghost: return t("유령", "Ghost")
+        case .stone: return t("골렘", "Golem")
+        case .star: return t("별", "Star")
+        case .seed: return t("씨앗", "Seed")
+        case .cloud: return t("구름", "Cloud")
+        case .octopus: return t("문어", "Octopus")
+        case .pixel: return t("픽셀 친구", "Pixel Buddy")
         case .claude: return "Claude"
         case .codex: return "Codex"
         }
