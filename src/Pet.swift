@@ -1,4 +1,4 @@
-import SpriteKit
+import AppKit
 
 let dashSpeed: CGFloat = 320      // pt/s
 let returnSpeed: CGFloat = 200
@@ -85,19 +85,24 @@ struct Perimeter {
 // One agent = one pet.
 // working: busily wanders the crowd. idle/done: rests in place.
 // blocked: startled hop, climbs the nearest screen edge, runs along it to near the cursor and waves.
-final class Pet: SKNode {
+final class Pet {
     let kind: PetKind
+    let layer = CALayer()         // Position, rotation, scale, and order among pets
+    let badge = CALayer()         // ! or ✓. Added to the scene root above the pets, so another pet's body never covers it
+    private let body = CALayer()  // Bounce and left/right facing
+    private let sprite = CALayer()
     private let frames: [Pose: [Frame]]
-    private let body = SKNode()   // Bounce and left/right facing
-    private let sprite = SKSpriteNode()
-    private let badge = SKShapeNode(rectOf: CGSize(width: 19, height: 19), cornerRadius: 9.5)
-    private let badgeLabel = SKLabelNode(fontNamed: ".AppleSystemUIFont")
     private let phase: Double     // Offsets each pet's motion rhythm
     private let walkSpeed = CGFloat.random(in: 26...38)
     private let blockSide = CGFloat.random(in: 26...44)   // Stops beside the cursor so it doesn't cover it
 
     private(set) var status = ""
     private(set) var isDashing = false
+    private(set) var position: CGPoint
+    private(set) var zRotation: CGFloat = 0
+    private var scale = petScale
+    private var bounce: CGFloat = 0
+    private var facing: CGFloat = 1   // -1 faces left
     private var statusSince: Double?
     private var runSpeed: CGFloat = 0
     private var wanderTarget: CGPoint?
@@ -109,23 +114,17 @@ final class Pet: SKNode {
         self.kind = kind
         frames = Sprites.frames(kind)
         phase = Double(id.unicodeScalars.reduce(0) { $0 + Int($1.value) } % 1600) / 100
-        super.init()
         position = start
         sprite.position.y = -footOffset
-        body.addChild(sprite)
-        addChild(body)
-        // Attach the badge to the pet, not body, so its text doesn't flip with the body.
-        badge.strokeColor = .clear
-        badge.zPosition = 2
-        badgeLabel.fontSize = 12
-        badgeLabel.fontColor = .white
-        badgeLabel.verticalAlignmentMode = .center
-        badge.addChild(badgeLabel)
-        addChild(badge)
+        let filter: CALayerContentsFilter = kind == .pixel || kind == .claude ? .nearest : .linear
+        sprite.magnificationFilter = filter
+        sprite.minificationFilter = filter
+        body.addSublayer(sprite)
+        layer.addSublayer(body)
+        badge.bounds.size = CGSize(width: 19, height: 19)
         show(.resting)
+        render()
     }
-
-    required init?(coder: NSCoder) { fatalError() }
 
     // Returns false if the status is unchanged.
     @discardableResult
@@ -135,16 +134,18 @@ final class Pet: SKNode {
         statusSince = nil
         wanderTarget = nil
         goalS = nil
-        badgeLabel.text = s == "blocked" ? "!" : "✓"
-        badge.fillColor = s == "blocked" ? .systemOrange : .systemGreen
+        badge.contents = s == "blocked" ? Pet.blockedBadge : Pet.doneBadge
         return true
     }
 
     // true while still moving. When all return false, the scene stops drawing.
     func step(t: Double, dt: CGFloat, world w: World) -> Bool {
+        defer { render() }
         if statusSince == nil { statusSince = t }
         let age = t - statusSince!
-        updateLook(scale: w.scale)
+        scale = w.scale
+        bounce = 0
+        isDashing = false
 
         if w.still { stayStill(w); return false }
         if status == "blocked" { return stepBlocked(t: t, age: age, dt: dt, world: w) }
@@ -152,14 +153,36 @@ final class Pet: SKNode {
         return stepInCrowd(t: t, age: age, dt: dt, world: w)
     }
 
-    private func updateLook(scale: CGFloat) {
-        setScale(scale)
-        badge.setScale(0.8 / scale)   // Same on-screen size regardless of character size
-        badge.position.y = 30 + 10 / scale
+    // Writes the state to the layers. Call inside a transaction with actions disabled.
+    private func render() {
+        layer.position = position
+        layer.zPosition = status == "blocked" ? 10_000 : -position.y   // Pets in front (lower) draw on top
+        layer.setAffineTransform(CGAffineTransform(rotationAngle: zRotation).scaledBy(x: scale, y: scale))
+        body.position.y = bounce
+        body.setAffineTransform(CGAffineTransform(scaleX: facing, y: 1))
+        // Above the head, upright, and the same on-screen size regardless of character size.
+        let head = CGPoint(x: 0, y: 30 * scale + 10).applying(CGAffineTransform(rotationAngle: zRotation))
+        badge.position = CGPoint(x: position.x + head.x, y: position.y + head.y)
+        badge.zPosition = layer.zPosition + 2
+        badge.setAffineTransform(CGAffineTransform(scaleX: 0.8, y: 0.8))
         badge.isHidden = status != "blocked" && status != "done"   // Keep done's ✓ until the user checks the pane
-        body.position = .zero
-        zPosition = status == "blocked" ? 10_000 : -position.y   // Pets in front (lower) draw on top
-        isDashing = false
+    }
+
+    // Fades in, or fades out and then removes the layers. A fade-out starts from the current opacity, so it doesn't flash.
+    func fade(out: Bool) {
+        CATransaction.begin()
+        if out {
+            let (layer, badge) = (layer, badge)
+            CATransaction.setCompletionBlock { layer.removeFromSuperlayer(); badge.removeFromSuperlayer() }
+        }
+        for l in [layer, badge] {
+            let animation = CABasicAnimation(keyPath: "opacity")
+            animation.fromValue = out ? l.presentation()?.opacity ?? l.opacity : 0
+            animation.duration = 0.25
+            l.opacity = out ? 0 : 1
+            l.add(animation, forKey: "fade")
+        }
+        CATransaction.commit()
     }
 
     private func stayStill(_ w: World) {
@@ -189,7 +212,7 @@ final class Pet: SKNode {
     private func stepInCrowd(t: Double, age: Double, dt: CGFloat, world w: World) -> Bool {
         if status == "done" && age < celebrationTime {
             show(.celebrate, frame: Int(age / 0.2), loop: false)
-            body.position.y = hop(age, length: 0.8, height: 6)
+            bounce = hop(age, length: 0.8, height: 6)
             return true
         }
         guard status == "working" else { show(.resting); return false }
@@ -211,7 +234,7 @@ final class Pet: SKNode {
         let goal = blockGoal(w)
         if edgeS == nil && age < 0.35 {   // Startled hop
             show(.blocked)
-            body.position.y = hop(age, length: 0.35, height: 8)
+            bounce = hop(age, length: 0.35, height: 8)
             return true
         }
         isDashing = true
@@ -221,8 +244,8 @@ final class Pet: SKNode {
         } else if runAlongEdge(to: goal, on: w.path, maxSpeed: dashSpeed, dt: dt) {
             isDashing = false
             show(.blocked, frame: Int((t + phase) * 4))
-            body.xScale = -1   // Goal is ahead of the cursor on the path, so turning back faces the cursor
-            body.position.y = hop((t + phase).truncatingRemainder(dividingBy: 2.5), length: 0.3, height: 6)
+            facing = -1   // Goal is ahead of the cursor on the path, so turning back faces the cursor
+            bounce = hop((t + phase).truncatingRemainder(dividingBy: 2.5), length: 0.3, height: 6)
             return true
         }
         showMoving(t, fps: 14, bob: 3)
@@ -256,7 +279,7 @@ final class Pet: SKNode {
         let step = advance(remaining: d, maxSpeed: maxSpeed, dt: dt)
         position.x += dx / d * step
         position.y += dy / d * step
-        if abs(dx) > 0.5 { body.xScale = dx < 0 ? -1 : 1 }
+        if abs(dx) > 0.5 { facing = dx < 0 ? -1 : 1 }
         return false
     }
 
@@ -266,7 +289,7 @@ final class Pet: SKNode {
             edgeS = path.wrap(goal); runSpeed = 0
         } else {
             edgeS = path.wrap(edgeS! + advance(remaining: abs(d), maxSpeed: maxSpeed, dt: dt) * (d < 0 ? -1 : 1))
-            body.xScale = d < 0 ? -1 : 1
+            facing = d < 0 ? -1 : 1
         }
         stand(on: path)
         return abs(d) < 1.5
@@ -275,27 +298,41 @@ final class Pet: SKNode {
     private func stand(on path: Perimeter) {
         position = path.point(edgeS!)
         zRotation = path.angle(edgeS!)
-        badge.zRotation = -zRotation   // Keep the badge upright when the body flips
     }
 
     private func leaveEdge() {
         edgeS = nil
         zRotation = 0
-        badge.zRotation = 0
     }
 
     // When loop is false, stops on the last frame.
     private func show(_ pose: Pose, frame index: Int = 0, loop: Bool = true) {
         let list = frames[pose]!
         let f = list[loop ? index % list.count : min(index, list.count - 1)]
-        guard sprite.texture !== f.texture else { return }
-        sprite.texture = f.texture
-        sprite.size = f.size
+        guard sprite.contents as AnyObject? !== f.image else { return }
+        sprite.contents = f.image
+        sprite.bounds.size = f.size
         sprite.anchorPoint = CGPoint(x: f.anchorX, y: 0)
     }
 
     private func showMoving(_ t: Double, fps: Double, bob: CGFloat) {
         show(.working, frame: Int((t + phase) * fps))
-        body.position.y = abs(sin((t + phase) * fps * 1.15)) * bob
+        bounce = abs(sin((t + phase) * fps * 1.15)) * bob
+    }
+
+    private static let blockedBadge = badgeImage("!", .systemOrange)
+    private static let doneBadge = badgeImage("✓", .systemGreen)
+
+    // A 19 pt circle with a white mark, drawn at 2x.
+    private static func badgeImage(_ mark: String, _ color: NSColor) -> CGImage {
+        let context = bitmap(width: 38, height: 38)
+        context.setFillColor(color.cgColor)
+        context.fillEllipse(in: CGRect(x: 0, y: 0, width: 38, height: 38))
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
+        let text = NSAttributedString(string: mark, attributes: [.font: NSFont.systemFont(ofSize: 24), .foregroundColor: NSColor.white])
+        text.draw(at: CGPoint(x: (38 - text.size().width) / 2, y: (38 - text.size().height) / 2))
+        NSGraphicsContext.restoreGraphicsState()
+        return context.makeImage()!
     }
 }

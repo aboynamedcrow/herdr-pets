@@ -1,5 +1,4 @@
 import AppKit
-import SpriteKit
 
 // Parent folder of the executable (bin/pets). Assets are found here.
 let projectRoot = Bundle.main.executableURL!.resolvingSymlinksInPath()
@@ -60,7 +59,6 @@ enum Pose: String, CaseIterable {
 
 struct Frame {
     let image: CGImage
-    let texture: SKTexture
     let size: CGSize       // pt
     let anchorX: CGFloat   // Centroid of opaque pixels (0–1). Keeps the body from shifting sideways on arm-reaching frames
 }
@@ -80,10 +78,10 @@ enum Sprites {
         for (pose, still) in zip(Pose.allCases, sheet) {
             let strip = slice("frames/\(kind.rawValue)-\(pose.rawValue)", into: pose.frameCount)
             if strip.isEmpty {
-                result[pose] = [frame(still, scale: scale, kind)]
+                result[pose] = [frame(still, scale: scale)]
             } else {   // Fit the tallest animation frame to the sheet pose height
                 let stripScale = CGFloat(still.image.height) * scale / CGFloat(strip.map(\.image.height).max()!)
-                result[pose] = strip.map { frame($0, scale: stripScale, kind) }
+                result[pose] = strip.map { frame($0, scale: stripScale) }
             }
         }
         cache[kind] = result
@@ -98,8 +96,8 @@ enum Sprites {
         return NSImage(cgImage: context.makeImage()!, size: NSSize(width: 128, height: 128))
     }
 
-    // Downscale textures to the max display size (72pt, Retina 2x) to save memory.
-    private static func frame(_ crop: (image: CGImage, centroidX: CGFloat), scale: CGFloat, _ kind: PetKind) -> Frame {
+    // Downscale images to the max display size (72pt, Retina 2x) to save memory.
+    private static func frame(_ crop: (image: CGImage, centroidX: CGFloat), scale: CGFloat) -> Frame {
         let size = CGSize(width: CGFloat(crop.image.width) * scale, height: CGFloat(crop.image.height) * scale)
         let pixels = 2 * CGFloat(Preferences.sizeRange.upperBound) / baseSize
         var image = crop.image
@@ -108,9 +106,7 @@ enum Sprites {
             context.draw(image, in: CGRect(x: 0, y: 0, width: context.width, height: context.height))
             image = context.makeImage()!
         }
-        let texture = SKTexture(cgImage: image)
-        texture.filteringMode = kind == .pixel || kind == .claude ? .nearest : .linear
-        return Frame(image: image, texture: texture, size: size, anchorX: crop.centroidX)
+        return Frame(image: image, size: size, anchorX: crop.centroidX)
     }
 
     // Slice a file with count images in equal-width cells. Empty array if the file is missing.

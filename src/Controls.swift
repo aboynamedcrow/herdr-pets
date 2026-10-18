@@ -138,7 +138,7 @@ final class Controls: NSObject {
     @objc private func changeVisible(_ sender: NSSwitch) {
         preferences.visible = sender.state == .on
         preferences.save()
-        if preferences.visible { overlay.orderFrontRegardless(); scene.wake() } else { overlay.orderOut(nil); skView.isPaused = true }
+        if preferences.visible { overlay.orderFrontRegardless(); scene.wake() } else { overlay.orderOut(nil); scene.stop() }
     }
 
     @objc private func changeMotion(_ sender: NSSwitch) {

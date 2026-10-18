@@ -1,5 +1,4 @@
 import AppKit
-import SpriteKit
 
 func screenContaining(_ point: NSPoint) -> NSScreen? {
     NSScreen.screens.first { NSMouseInRect(point, $0.frame, false) }
@@ -11,7 +10,7 @@ func defaultArea() -> NSRect {
 }
 
 // Transparent window that passes clicks through and never takes focus.
-func makeOverlay(showing view: SKView) -> NSPanel {
+func makeOverlay(showing view: NSView) -> NSPanel {
     let panel = NSPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
     panel.isOpaque = false
     panel.backgroundColor = .clear
@@ -29,7 +28,6 @@ func layout() {
     let screen = screenContaining(NSPoint(x: area.midX, y: area.midY)) ?? NSScreen.main!
     let origin = screen.frame.origin
     overlay.setFrame(screen.frame, display: true)
-    scene.size = screen.frame.size
     scene.screenOrigin = origin
     scene.area = area.offsetBy(dx: -origin.x, dy: -origin.y)
     scene.walls = screen.visibleFrame.offsetBy(dx: -origin.x, dy: -origin.y)

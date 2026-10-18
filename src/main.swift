@@ -1,7 +1,6 @@
 // Shows one pet per Herdr agent on screen. See README.md for build and run.
 
 import AppKit
-import SpriteKit
 
 let arguments = CommandLine.arguments
 let demo = arguments.contains("--demo")
@@ -23,14 +22,11 @@ PetKind.allCases.forEach { _ = Sprites.frames($0) }   // Preload images. Stops r
 NSApplication.shared.setActivationPolicy(.accessory)   // No Dock icon, never takes focus
 
 var area = preferences.area ?? defaultArea()   // Crowd area (screen coordinates). Saved to preferences when the editor closes
-let scene = PetScene(size: CGSize(width: 1, height: 1))
-scene.backgroundColor = .clear
-scene.scaleMode = .resizeFill
-let skView = SKView()
-skView.allowsTransparency = true
-skView.autoresizingMask = [.width, .height]
-skView.presentScene(scene)
-let overlay = makeOverlay(showing: skView)
+let petView = NSView()
+petView.wantsLayer = true
+petView.autoresizingMask = [.width, .height]
+let scene = PetScene(root: petView.layer!)
+let overlay = makeOverlay(showing: petView)
 let areaEditor = AreaEditor()
 let controls = Controls()
 
