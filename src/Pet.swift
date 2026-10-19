@@ -6,7 +6,7 @@ let acceleration: CGFloat = 700   // pt/s²
 let celebrationTime = 1.8
 
 struct World {
-    let band: CGRect      // Floor strip the crowd lives on (range for the pet's anchor)
+    let band: CGRect      // Floor the crowd lives on (range for the pet's anchor)
     let path: Perimeter   // Screen-edge path a blocked pet runs along
     let cursor: CGPoint
     let scale: CGFloat
@@ -15,7 +15,7 @@ struct World {
 
 func crowdBand(_ area: CGRect, scale: CGFloat) -> CGRect {
     let side = 14 * scale + 2
-    let depth = min(14, max(0, area.height - baseSize * scale - 4))   // A little front-to-back depth
+    let depth = max(0, area.height - baseSize * scale - 4)   // Higher is farther back
     return CGRect(x: area.minX + side, y: area.minY + footOffset * scale + 2, width: max(0, area.width - 2 * side), height: depth)
 }
 
@@ -83,7 +83,7 @@ struct Perimeter {
 }
 
 // One agent = one pet.
-// working: short quick trips around the crowd, tapping in place in between. idle/done: rests in place.
+// working: short quick trips around the area, tapping in place in between. idle/done: rests in place.
 // blocked: startled hop, climbs the nearest screen edge, runs along it to near the cursor and waves.
 final class Pet {
     let kind: PetKind
@@ -222,7 +222,7 @@ final class Pet {
             bounce = hop((t + phase).truncatingRemainder(dividingBy: 0.45), length: 0.27, height: 2)
             return true
         }
-        let target = clamped(wanderTarget ?? nearbyPoint(in: w.band, scale: w.scale), to: w.band)   // If the area changed, pull the old target into the new one
+        let target = clamped(wanderTarget ?? nearbyPoint(scale: w.scale), to: w.band)   // If the area changed, pull the old target into the new one
         wanderTarget = target
         if runToward(target, maxSpeed: walkSpeed, dt: dt) {
             wanderTarget = nil
@@ -232,10 +232,9 @@ final class Pet {
         return true
     }
 
-    // A spot a short way left or right, so trips stay short.
-    private func nearbyPoint(in band: CGRect, scale: CGFloat) -> CGPoint {
+    private func nearbyPoint(scale: CGFloat) -> CGPoint {
         let x = position.x + .random(in: 40...120) * scale * (Bool.random() ? 1 : -1)
-        return CGPoint(x: x, y: .random(in: band.minY...max(band.minY, band.maxY)))
+        return CGPoint(x: x, y: position.y + .random(in: -30...30) * scale)
     }
 
     private func stepBlocked(t: Double, age: Double, dt: CGFloat, world w: World) -> Bool {

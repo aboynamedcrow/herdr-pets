@@ -4,9 +4,11 @@ func screenContaining(_ point: NSPoint) -> NSScreen? {
     NSScreen.screens.first { NSMouseInRect(point, $0.frame, false) }
 }
 
+let minAreaSize = NSSize(width: 80, height: 24)
+
 func defaultArea() -> NSRect {
     let screen = screenContaining(NSEvent.mouseLocation) ?? NSScreen.main!
-    return NSRect(x: screen.visibleFrame.maxX - 280, y: screen.visibleFrame.minY + 8, width: 260, height: 80)
+    return NSRect(x: screen.visibleFrame.maxX - 280, y: screen.visibleFrame.minY + 8, width: 260, height: 60)
 }
 
 // Transparent window that passes clicks through and never takes focus.
@@ -24,7 +26,7 @@ func makeOverlay(showing view: NSView) -> NSPanel {
 
 // Fit the overlay to the screen holding the area's center. If that screen is gone (monitor unplugged) or the area is too small, move to the default area.
 func layout() {
-    if area.width < 80 || area.height < 60 || screenContaining(NSPoint(x: area.midX, y: area.midY)) == nil { area = defaultArea() }
+    if area.width < minAreaSize.width || area.height < minAreaSize.height || screenContaining(NSPoint(x: area.midX, y: area.midY)) == nil { area = defaultArea() }
     let screen = screenContaining(NSPoint(x: area.midX, y: area.midY)) ?? NSScreen.main!
     let origin = screen.frame.origin
     overlay.setFrame(screen.frame, display: true)
@@ -59,7 +61,7 @@ final class AreaEditor: NSObject, NSWindowDelegate {
         w.isOpaque = false
         w.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.08)
         w.level = .floating
-        w.contentMinSize = NSSize(width: 80, height: 60)
+        w.contentMinSize = minAreaSize
         w.delegate = self
         w.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
