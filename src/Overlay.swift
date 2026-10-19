@@ -55,8 +55,11 @@ final class AreaEditor: NSObject, NSWindowDelegate {
 
     func show() {
         if let window { window.makeKeyAndOrderFront(nil); return }
-        let w = NSWindow(contentRect: area, styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        let w = NSWindow(contentRect: area, styleMask: [.titled, .closable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
         w.title = t("친구들이 머무를 곳", "Home area")
+        w.titleVisibility = .hidden
+        w.titlebarAppearsTransparent = true
+        w.isMovableByWindowBackground = true
         w.isReleasedWhenClosed = false
         w.isOpaque = false
         w.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.08)
