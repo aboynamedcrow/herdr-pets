@@ -83,7 +83,7 @@ struct Perimeter {
 }
 
 // One agent = one pet.
-// working: busily wanders the crowd. idle/done: rests in place.
+// working: short quick trips around the crowd, tapping in place in between. idle/done: rests in place.
 // blocked: startled hop, climbs the nearest screen edge, runs along it to near the cursor and waves.
 final class Pet {
     let kind: PetKind
@@ -93,7 +93,7 @@ final class Pet {
     private let sprite = CALayer()
     private let frames: [Pose: [Frame]]
     private let phase: Double     // Offsets each pet's motion rhythm
-    private let walkSpeed = CGFloat.random(in: 26...38)
+    private let walkSpeed = CGFloat.random(in: 48...66)
     private let blockSide = CGFloat.random(in: 26...44)   // Stops beside the cursor so it doesn't cover it
 
     private(set) var status = ""
@@ -216,18 +216,26 @@ final class Pet {
             return true
         }
         guard status == "working" else { show(.resting); return false }
-        if t < restUntil {   // Fidgets in place even while pausing
-            show(.working, frame: Int((t + phase) * 6))
+        // Rhythm: a short trip, then quick taps in place, then another trip.
+        if t < restUntil {
+            show(.working, frame: Int((t + phase) * 8))
+            bounce = hop((t + phase).truncatingRemainder(dividingBy: 0.45), length: 0.27, height: 2)
             return true
         }
-        let target = clamped(wanderTarget ?? randomPoint(in: w.band), to: w.band)   // If the area changed, pull the old target into the new one
+        let target = clamped(wanderTarget ?? nearbyPoint(in: w.band, scale: w.scale), to: w.band)   // If the area changed, pull the old target into the new one
         wanderTarget = target
         if runToward(target, maxSpeed: walkSpeed, dt: dt) {
             wanderTarget = nil
-            restUntil = t + .random(in: 0.4...1.5)
+            restUntil = t + .random(in: 0.8...2.0)
         }
-        showMoving(t, fps: 10, bob: 2)
+        showMoving(t, fps: 14, bob: 2)
         return true
+    }
+
+    // A spot a short way left or right, so trips stay short.
+    private func nearbyPoint(in band: CGRect, scale: CGFloat) -> CGPoint {
+        let x = position.x + .random(in: 40...120) * scale * (Bool.random() ? 1 : -1)
+        return CGPoint(x: x, y: .random(in: band.minY...max(band.minY, band.maxY)))
     }
 
     private func stepBlocked(t: Double, age: Double, dt: CGFloat, world w: World) -> Bool {
