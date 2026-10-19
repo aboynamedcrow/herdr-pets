@@ -1,6 +1,5 @@
 import AppKit
 
-// The number next to the menu bar icon is the count of waiting (blocked) agents.
 final class Controls: NSObject {
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let popover = NSPopover()
@@ -18,7 +17,6 @@ final class Controls: NSObject {
         icon?.isTemplate = true   // Tints to match light/dark menu bar
         icon?.accessibilityDescription = "herdr-pets"
         item.button?.image = icon
-        item.button?.imagePosition = .imageLeading
         item.button?.target = self
         item.button?.action = #selector(toggle)
         popover.behavior = .transient
@@ -105,7 +103,6 @@ final class Controls: NSObject {
         statusLabel.stringValue = text
         statusLabel.textColor = waiting > 0 ? .systemOrange : .secondaryLabelColor
         item.button?.toolTip = text
-        item.button?.title = waiting > 0 ? " \(waiting)" : ""
     }
 
     private func refreshGallery() {

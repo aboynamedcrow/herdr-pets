@@ -23,7 +23,7 @@ herdr plugin install hmu332233/herdr-pets
 After installation, Herdr starts the app and the pets appear when an agent first changes status.
 The app also starts automatically when the Herdr server restarts.
 
-The menu bar shows a pet icon alongside the number of blocked agents; click the icon to open the settings panel.
+The menu bar shows a pet icon; click it to open the settings panel.
 
 ## How it works
 
