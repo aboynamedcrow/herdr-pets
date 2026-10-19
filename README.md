@@ -63,7 +63,14 @@ herdr plugin config-dir dev.minung.herdr-pets
 
 ## Turn off or uninstall
 
-If you quit the app from the menu bar, the plugin starts it again the next time an agent changes status. To turn it off completely, disable the plugin and then quit the app from the menu bar.
+If you quit the app from the menu bar, the plugin starts it again the next time an agent changes status. Use the `stop` action to turn off the pets and `start` to bring them back while keeping the plugin enabled.
+
+```sh
+herdr plugin action invoke stop --plugin dev.minung.herdr-pets
+herdr plugin action invoke start --plugin dev.minung.herdr-pets
+```
+
+To turn off the plugin as well, use `disable`, then quit the app from the menu bar.
 
 ```sh
 herdr plugin disable dev.minung.herdr-pets    # to remove: herdr plugin uninstall dev.minung.herdr-pets

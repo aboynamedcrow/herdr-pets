@@ -64,7 +64,14 @@ herdr plugin config-dir dev.minung.herdr-pets
 ## 끄기와 제거
 
 메뉴 막대에서 앱을 종료해도 다음에 에이전트 상태가 바뀌면 플러그인이 앱을 다시 실행합니다.
-완전히 끄려면 플러그인을 비활성화한 뒤 메뉴 막대에서 앱을 종료하면 됩니다.
+플러그인을 켜 둔 채 펫만 끄려면 `stop`, 다시 켜려면 `start` 액션을 사용합니다.
+
+```sh
+herdr plugin action invoke stop --plugin dev.minung.herdr-pets
+herdr plugin action invoke start --plugin dev.minung.herdr-pets
+```
+
+플러그인까지 끄려면 `disable`로 비활성화한 뒤 메뉴 막대에서 앱을 종료합니다.
 
 ```sh
 herdr plugin disable dev.minung.herdr-pets    # 제거하려면: herdr plugin uninstall dev.minung.herdr-pets
