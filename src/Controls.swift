@@ -8,6 +8,8 @@ final class Controls: NSObject {
     private let statusLabel = label("", size: 12, weight: .medium)
     private let characterNote = label("", size: 11, secondary: true)
     private let sizeLabel = label("", size: 12, secondary: true)
+    private let screens = NSPopUpButton()
+    private var screenRows: [NSView] = []   // Monitor row and its separator. Shown only with two or more screens
     private var connected = true
 
     func install() {
@@ -59,6 +61,8 @@ final class Controls: NSObject {
         sizeLabel.stringValue = "\(Int(preferences.size)) pt"
         let language = NSSegmentedControl(labels: ["한국어", "English"], trackingMode: .selectOne, target: self, action: #selector(changeLanguage(_:)))
         language.selectedSegment = preferences.language == "ko" ? 0 : 1
+        screens.target = self; screens.action = #selector(changeScreen(_:))
+        screenRows = [row(label(t("모니터", "Monitor"), size: 13), screens), separator()]
 
         let rows = stack([
             row(label(t("펫 표시", "Show pets"), size: 13), visible),
@@ -69,6 +73,7 @@ final class Controls: NSObject {
             separator(),
             row(label(t("모이는 곳", "Home area"), size: 13), NSButton(title: t("정하기…", "Set…"), target: self, action: #selector(editArea))),
             separator(),
+        ] + screenRows + [
             row(label(t("언어", "Language"), size: 13), language),
         ], spacing: 10)
         let card = NSView()
@@ -82,6 +87,8 @@ final class Controls: NSObject {
     func show() {
         guard let button = item.button else { return }
         refreshGallery()   // Agents of a new kind may have appeared meanwhile
+        refreshScreens()   // Monitors may have been plugged in or out
+        popover.contentSize = popover.contentViewController!.view.fittingSize
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
     }
 
@@ -125,6 +132,14 @@ final class Controls: NSObject {
         }
     }
 
+    private func refreshScreens() {
+        screens.removeAllItems()
+        screens.addItems(withTitles: NSScreen.screens.map(\.localizedName))
+        let current = screenContaining(NSPoint(x: area.midX, y: area.midY))
+        screens.selectItem(at: NSScreen.screens.firstIndex { $0 == current } ?? 0)
+        screenRows.forEach { $0.isHidden = NSScreen.screens.count < 2 }
+    }
+
     @objc private func toggle() { popover.isShown ? popover.performClose(nil) : show() }
 
     // apply brings back pets whose character changed.
@@ -158,6 +173,11 @@ final class Controls: NSObject {
         preferences.language = sender.selectedSegment == 0 ? "ko" : "en"
         preferences.save()
         build()
+    }
+
+    @objc private func changeScreen(_ sender: NSPopUpButton) {
+        guard NSScreen.screens.indices.contains(sender.indexOfSelectedItem) else { return }
+        moveArea(to: NSScreen.screens[sender.indexOfSelectedItem])
     }
 
     @objc private func editArea() {

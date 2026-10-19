@@ -34,6 +34,19 @@ func layout() {
     scene.wake()   // When the area changes, pets run to the new one
 }
 
+// Moves the area to the same spot on another screen: same distance from the right and bottom edges, kept inside that screen.
+func moveArea(to screen: NSScreen) {
+    let from = (screenContaining(NSPoint(x: area.midX, y: area.midY)) ?? NSScreen.main!).visibleFrame
+    let to = screen.visibleFrame
+    let width = min(area.width, to.width), height = min(area.height, to.height)
+    let x = min(max(to.maxX - (from.maxX - area.minX), to.minX), to.maxX - width)
+    let y = min(max(to.minY + (area.minY - from.minY), to.minY), to.maxY - height)
+    area = NSRect(x: x, y: y, width: width, height: height)
+    preferences.area = area
+    preferences.save()
+    layout()
+}
+
 // Opened from the panel's "Set…" button. Pets follow the translucent window as it moves; closing it saves.
 final class AreaEditor: NSObject, NSWindowDelegate {
     private var window: NSWindow?
