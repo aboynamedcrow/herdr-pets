@@ -32,7 +32,7 @@ final class PetScene {
         let band = crowdBand(area, scale: petScale)
         for agent in shown {
             let pet = pets[agent.terminal_id] ?? {
-                let pet = Pet(id: agent.terminal_id, kind: petKind(for: agent), at: randomPoint(in: band))
+                let pet = Pet(id: agent.terminal_id, kind: petKind(for: agent), spot: freeSpot(in: band), in: band)
                 root.addSublayer(pet.layer)
                 root.addSublayer(pet.badge)
                 pet.fade(out: false)
@@ -42,6 +42,20 @@ final class PetScene {
             if pet.setStatus(agent.agent_status) { changed = true }
         }
         if changed && preferences.visible { update() }   // Show the new status in this same commit, not one tick later
+    }
+
+    // A random spot that leans toward the middle and skips the outer 15%, retried only when it lands right on top of another pet.
+    private func freeSpot(in band: CGRect) -> CGPoint {
+        func centered() -> CGFloat { 0.5 + (.random(in: -0.35...0.35) + .random(in: -0.35...0.35)) / 2 }   // Sum of two: peaks at the middle
+        let taken = pets.values.map { point($0.spot, in: band) }
+        let near = baseSize * petScale * 0.15
+        var spot = CGPoint.zero
+        for _ in 0..<8 {
+            spot = CGPoint(x: centered(), y: centered())
+            let p = point(spot, in: band)
+            if !taken.contains(where: { hypot($0.x - p.x, $0.y - p.y) < near }) { break }
+        }
+        return spot
     }
 
     // Updates now; update() keeps the timer running while any pet moves.

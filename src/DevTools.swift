@@ -49,7 +49,7 @@ func selfTest() {
         let scale = size / baseSize
         let band = crowdBand(CGRect(x: 1200, y: 20, width: 260, height: 80), scale: scale)
         let path = Perimeter(r: CGRect(x: 0, y: 12, width: 1512, height: 920).insetBy(dx: footOffset * scale + 2, dy: footOffset * scale + 2))
-        let pet = Pet(id: "sim", kind: .blob, at: CGPoint(x: band.midX, y: band.midY))
+        let pet = Pet(id: "sim", kind: .blob, spot: CGPoint(x: 0.5, y: 0.5), in: band)
         var cursor = CGPoint(x: 300, y: 900)
         var t = ProcessInfo.processInfo.systemUptime
         func run(seconds: Double) {
@@ -72,5 +72,21 @@ func selfTest() {
         pet.setStatus("working"); run(seconds: 5)
         precondition(pet.position != resting)                                                          // working wanders
     }
-    print("PASS: assets, character assignment, working moves / idle rests / blocked edge run / return at 4 sizes")
+
+    // Moving the area sends idle pets to their own spots in the new one instead of piling up at the nearest corner.
+    let from = crowdBand(CGRect(x: 1200, y: 20, width: 260, height: 80), scale: 1)
+    let to = crowdBand(CGRect(x: 100, y: 600, width: 260, height: 80), scale: 1)
+    let path = Perimeter(r: CGRect(x: 0, y: 12, width: 1512, height: 920))
+    let spots = [CGPoint(x: 0.1, y: 0.2), CGPoint(x: 0.5, y: 0.9), CGPoint(x: 0.9, y: 0.5)]
+    let crowd = spots.map { Pet(id: "sim", kind: .blob, spot: $0, in: from) }
+    var t = ProcessInfo.processInfo.systemUptime
+    for band in [from, to] {
+        for _ in 0..<(20 * 15) {
+            t += 1.0 / 15
+            for pet in crowd { _ = pet.step(t: t, dt: 1.0 / 15, world: World(band: band, path: path, cursor: .zero, scale: 1, still: false)) }
+        }
+    }
+    for (pet, spot) in zip(crowd, spots) { precondition(hypot(pet.position.x - point(spot, in: to).x, pet.position.y - point(spot, in: to).y) < 2) }
+
+    print("PASS: assets, character assignment, working moves / idle rests / blocked edge run / return at 4 sizes, area move keeps spread")
 }

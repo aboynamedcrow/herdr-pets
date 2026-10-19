@@ -23,8 +23,9 @@ func clamped(_ p: CGPoint, to r: CGRect) -> CGPoint {
     CGPoint(x: min(max(p.x, r.minX), r.maxX), y: min(max(p.y, r.minY), r.maxY))
 }
 
-func randomPoint(in r: CGRect) -> CGPoint {
-    CGPoint(x: .random(in: r.minX...max(r.minX, r.maxX)), y: .random(in: r.minY...max(r.minY, r.maxY)))
+// A spot is a position relative to the band (0...1 on each axis), so it follows the band when the area moves or resizes.
+func point(_ spot: CGPoint, in r: CGRect) -> CGPoint {
+    CGPoint(x: r.minX + spot.x * r.width, y: r.minY + spot.y * r.height)
 }
 
 // Height of a single hop between 0 and length seconds.
@@ -84,9 +85,11 @@ struct Perimeter {
 
 // One agent = one pet.
 // working: short quick trips around the area, tapping in place in between. idle/done: rests in place.
+// When the area changes, each pet runs to its own spot in the new one, so the crowd keeps its spread.
 // blocked: startled hop, climbs the nearest screen edge, runs along it to near the cursor and waves.
 final class Pet {
     let kind: PetKind
+    let spot: CGPoint
     let layer = CALayer()         // Position, rotation, scale, and order among pets
     let badge = CALayer()         // ! or ✓. Added to the scene root above the pets, so another pet's body never covers it
     private let body = CALayer()  // Bounce and left/right facing
@@ -109,12 +112,15 @@ final class Pet {
     private var restUntil = 0.0
     private var edgeS: CGFloat?   // Position on the edge path. nil when not on the edge
     private var goalS: CGFloat?
+    private var lastBand: CGRect?
+    private var homing = false    // Heading to its spot because the area changed
 
-    init(id: String, kind: PetKind, at start: CGPoint) {
+    init(id: String, kind: PetKind, spot: CGPoint, in band: CGRect) {
         self.kind = kind
+        self.spot = spot
         frames = Sprites.frames(kind)
         phase = Double(id.unicodeScalars.reduce(0) { $0 + Int($1.value) } % 1600) / 100
-        position = start
+        position = point(spot, in: band)
         sprite.position.y = -footOffset
         let filter: CALayerContentsFilter = kind == .pixel || kind == .claude ? .nearest : .linear
         sprite.magnificationFilter = filter
@@ -146,10 +152,14 @@ final class Pet {
         scale = w.scale
         bounce = 0
         isDashing = false
+        if w.band != lastBand {
+            if lastBand != nil { homing = true }
+            lastBand = w.band
+        }
 
         if w.still { stayStill(w); return false }
         if status == "blocked" { return stepBlocked(t: t, age: age, dt: dt, world: w) }
-        if edgeS != nil || !w.band.insetBy(dx: -2, dy: -2).contains(position) { return stepReturning(t: t, dt: dt, world: w) }
+        if edgeS != nil || homing || !w.band.insetBy(dx: -2, dy: -2).contains(position) { return stepReturning(t: t, dt: dt, world: w) }
         return stepInCrowd(t: t, age: age, dt: dt, world: w)
     }
 
@@ -191,19 +201,21 @@ final class Pet {
             stand(on: w.path)
         } else {
             leaveEdge()
-            position = clamped(position, to: w.band)
+            if homing || !w.band.contains(position) { position = point(spot, in: w.band); homing = false }
         }
         show(standingPose)
     }
 
-    // Outside the crowd because blocked ended or the area moved. If on the edge, run back along it to near the crowd and step off.
+    // Blocked ended or the area changed. If on the edge, run along it to the point nearest its spot and step off, then run to the spot.
     private func stepReturning(t: Double, dt: CGFloat, world w: World) -> Bool {
         isDashing = true
+        let home = point(spot, in: w.band)
         if edgeS != nil {
-            let home = w.path.nearest(CGPoint(x: w.band.midX, y: w.band.minY))
-            if runAlongEdge(to: home, on: w.path, maxSpeed: returnSpeed, dt: dt) { leaveEdge() }
-        } else {
-            isDashing = !runToward(clamped(position, to: w.band), maxSpeed: returnSpeed, dt: dt)
+            if runAlongEdge(to: w.path.nearest(home), on: w.path, maxSpeed: returnSpeed, dt: dt) { leaveEdge() }
+        } else if runToward(home, maxSpeed: returnSpeed, dt: dt) {
+            isDashing = false
+            homing = false
+            wanderTarget = nil
         }
         showMoving(t, fps: 12, bob: 2)
         return true
