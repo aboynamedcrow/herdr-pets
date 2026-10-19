@@ -9,10 +9,24 @@ platforms = ["macos"]
 command = ["sh", "-c", "mkdir -p bin && swiftc -O -swift-version 5 src/*.swift -o bin/pets"]
 
 # bin/pets exits at once if it is already running, so starting it on every event is cheap.
+# Skipped while the stop action's marker file exists.
 [[startup]]
-command = ["sh", "-c", "test -x bin/pets || exit 1; ./bin/pets >/dev/null 2>&1 &"]
+command = ["sh", "-c", "test -e \"${HERDR_PLUGIN_CONFIG_DIR:-.}/stopped\" && exit 0; test -x bin/pets || exit 1; ./bin/pets >/dev/null 2>&1 &"]
 
 # Also starts the app at the next status change after install or link, without restarting the Herdr server.
 [[events]]
 on = "pane.agent_status_changed"
-command = ["sh", "-c", "test -x bin/pets || exit 1; ./bin/pets >/dev/null 2>&1 &"]
+command = ["sh", "-c", "test -e \"${HERDR_PLUGIN_CONFIG_DIR:-.}/stopped\" && exit 0; test -x bin/pets || exit 1; ./bin/pets >/dev/null 2>&1 &"]
+
+# Quits the app and keeps it off until the start action runs.
+[[actions]]
+id = "stop"
+title = "Stop pets"
+contexts = ["workspace"]
+command = ["sh", "-c", "touch \"${HERDR_PLUGIN_CONFIG_DIR:-.}/stopped\"; pkill -x pets; exit 0"]
+
+[[actions]]
+id = "start"
+title = "Start pets"
+contexts = ["workspace"]
+command = ["sh", "-c", "rm -f \"${HERDR_PLUGIN_CONFIG_DIR:-.}/stopped\"; test -x bin/pets || exit 1; ./bin/pets >/dev/null 2>&1 &"]
