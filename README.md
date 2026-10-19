@@ -52,6 +52,7 @@ The settings panel, opened from the menu bar icon, shows the total number of age
 | **Pet size** | Adjust pet size from 16–72 pt while **!** and **✓** stay the same size |
 | **Reduce motion** | Pets show status through poses without moving, and also follow the macOS Reduce Motion setting |
 | **Home area → Set…** | Move and resize the translucent window, then close it to save its position and size |
+| **Monitor** | With two or more monitors, choose which one shows the pets. The home area moves to the same spot on that monitor |
 | **Language** | Defaults to the macOS language; switch to 한국어 or English |
 | **Quit** | Quit the app |
 
