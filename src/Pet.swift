@@ -234,7 +234,7 @@ final class Pet {
             bounce = hop((t + phase).truncatingRemainder(dividingBy: 0.45), length: 0.27, height: 2)
             return true
         }
-        let target = clamped(wanderTarget ?? nearbyPoint(scale: w.scale), to: w.band)   // If the area changed, pull the old target into the new one
+        let target = clamped(wanderTarget ?? nearbyPoint(in: w.band, scale: w.scale), to: w.band)   // If the area changed, pull the old target into the new one
         wanderTarget = target
         if runToward(target, maxSpeed: walkSpeed, dt: dt) {
             wanderTarget = nil
@@ -244,9 +244,14 @@ final class Pet {
         return true
     }
 
-    private func nearbyPoint(scale: CGFloat) -> CGPoint {
-        let x = position.x + .random(in: 40...120) * scale * (Bool.random() ? 1 : -1)
-        return CGPoint(x: x, y: position.y + .random(in: -30...30) * scale)
+    // A trip that turns back at the band's walls instead of stopping against them, so pets don't pile up at the sides of a small area.
+    private func nearbyPoint(in band: CGRect, scale: CGFloat) -> CGPoint {
+        func turn(_ from: CGFloat, by d: CGFloat, within lo: CGFloat, _ hi: CGFloat) -> CGFloat {
+            let d = min(abs(d), (hi - lo) / 2) * (d < 0 ? -1 : 1)
+            return lo...hi ~= from + d ? from + d : from - d
+        }
+        return CGPoint(x: turn(position.x, by: .random(in: 8...24) * scale * (Bool.random() ? 1 : -1), within: band.minX, band.maxX),
+                       y: turn(position.y, by: .random(in: -6...6) * scale, within: band.minY, band.maxY))
     }
 
     private func stepBlocked(t: Double, age: Double, dt: CGFloat, world w: World) -> Bool {

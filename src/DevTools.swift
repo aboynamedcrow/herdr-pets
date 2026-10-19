@@ -88,5 +88,16 @@ func selfTest() {
     }
     for (pet, spot) in zip(crowd, spots) { precondition(hypot(pet.position.x - point(spot, in: to).x, pet.position.y - point(spot, in: to).y) < 2) }
 
+    // In a small area, working pets wander through the middle instead of sticking to the side walls.
+    let small = crowdBand(CGRect(x: 1300, y: 0, width: 189, height: 60), scale: 1)
+    let walker = Pet(id: "sim", kind: .blob, spot: CGPoint(x: 0.5, y: 0.5), in: small)
+    walker.setStatus("working")
+    var atWall = 0
+    for _ in 0..<(120 * 15) {
+        t += 1.0 / 15
+        _ = walker.step(t: t, dt: 1.0 / 15, world: World(band: small, path: path, cursor: .zero, scale: 1, still: false))
+        if walker.position.x < small.minX + 1 || walker.position.x > small.maxX - 1 { atWall += 1 }
+    }
+    precondition(atWall < 120 * 15 / 5)
     print("PASS: assets, character assignment, working moves / idle rests / blocked edge run / return at 4 sizes, area move keeps spread")
 }
