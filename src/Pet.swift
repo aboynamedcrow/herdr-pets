@@ -250,8 +250,8 @@ final class Pet {
             let d = min(abs(d), (hi - lo) / 2) * (d < 0 ? -1 : 1)
             return lo...hi ~= from + d ? from + d : from - d
         }
-        return CGPoint(x: turn(position.x, by: .random(in: 20...50) * scale * (Bool.random() ? 1 : -1), within: band.minX, band.maxX),
-                       y: turn(position.y, by: .random(in: -12...12) * scale, within: band.minY, band.maxY))
+        return CGPoint(x: turn(position.x, by: .random(in: 70...110) * scale * (Bool.random() ? 1 : -1), within: band.minX, band.maxX),
+                       y: turn(position.y, by: .random(in: -20...20) * scale, within: band.minY, band.maxY))
     }
 
     private func stepBlocked(t: Double, age: Double, dt: CGFloat, world w: World) -> Bool {
