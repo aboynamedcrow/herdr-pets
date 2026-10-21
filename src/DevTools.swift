@@ -32,6 +32,24 @@ func exportFrames(to directory: URL) throws {
 }
 
 func selfTest() {
+    // Unplugging falls back to the next most recent monitor; replugging doesn't change the order.
+    var settings = Preferences()
+    let frame = CGRect(x: 1000, y: 0, width: 1000, height: 800)
+    let positions = ["A": CGRect(x: 1020, y: 10, width: 180, height: 40),
+                     "B": CGRect(x: 1400, y: 20, width: 200, height: 50),
+                     "C": CGRect(x: 1720, y: 30, width: 260, height: 60)]
+    for id in ["A", "B", "C"] {
+        settings.selectScreen(id, placement: ScreenArea(positions[id]!, in: frame))
+    }
+    for (connected, expected) in [(["A", "B", "C"], "C"), (["A", "B"], "B"), (["A"], "A"), (["C", "A", "B"], "C")] {
+        let id = settings.preferredScreen(in: connected)!
+        precondition(id == expected && settings.screenAreas[id]!.rect(in: frame) == positions[id]!)
+    }
+    settings.selectScreen("B", placement: settings.screenAreas["B"]!)
+    precondition(settings.screenOrder == ["B", "C", "A"])
+    let saved = try! JSONDecoder().decode(Preferences.self, from: JSONEncoder().encode(settings))
+    precondition(saved.screenOrder == settings.screenOrder && saved.screenAreas["C"]!.rect(in: frame) == positions["C"]!)
+
     for kind in PetKind.allCases {
         for (pose, frames) in Sprites.frames(kind) {
             precondition(frames.count == 1 || frames.count == pose.frameCount, "\(kind)-\(pose): 프레임 \(frames.count)장")

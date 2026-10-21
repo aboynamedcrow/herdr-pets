@@ -129,7 +129,7 @@ final class Controls: NSObject {
         }
     }
 
-    private func refreshScreens() {
+    func refreshScreens() {
         screens.removeAllItems()
         screens.addItems(withTitles: NSScreen.screens.map(\.localizedName))
         let current = screenContaining(NSPoint(x: area.midX, y: area.midY))

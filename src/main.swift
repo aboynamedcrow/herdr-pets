@@ -21,7 +21,7 @@ PetKind.allCases.forEach { _ = Sprites.frames($0) }   // Preload images. Stops r
 
 NSApplication.shared.setActivationPolicy(.accessory)   // No Dock icon, never takes focus
 
-var area = preferences.area ?? defaultArea()   // Crowd area (screen coordinates). Saved to preferences when the editor closes
+var area = CGRect.zero   // Crowd area currently shown (screen coordinates). Saved per monitor in preferences
 let petView = NSView()
 petView.wantsLayer = true
 petView.autoresizingMask = [.width, .height]
@@ -30,9 +30,11 @@ let overlay = makeOverlay(showing: petView)
 let areaEditor = AreaEditor()
 let controls = Controls()
 
-layout()
-if preferences.visible { overlay.orderFrontRegardless() }
-NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { _ in layout() }
+restoreArea()
+NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { _ in
+    restoreArea()
+    controls.refreshScreens()
+}
 NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main) { _ in scene.wake() }   // macOS Reduce Motion
 controls.install()
 
