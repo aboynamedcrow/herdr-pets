@@ -170,6 +170,9 @@ final class RolePets {
     private var nextRulesRead = -Double.infinity
     private var rulesStamp: Stamp?
     private var rules: [PetRule] = []
+    var legacyRules: [PetRule] { rules }
+    let assignments: AssignmentStore
+    var agentOverrides: [String: String] = [:]
     private var cache: [String: Cached] = [:]
     private var logged: Set<String> = []
     private var revision = 0
@@ -178,6 +181,7 @@ final class RolePets {
          clock: @escaping () -> Double = { ProcessInfo.processInfo.systemUptime },
          log: @escaping (String) -> Void = { FileHandle.standardError.write(Data("herdr-pets: \($0)\n".utf8)) }) {
         self.directory = directory; self.home = home; self.clock = clock; self.log = log
+        assignments = AssignmentStore(file: directory.appendingPathComponent("assignments.json"))
     }
 
     private func problem(_ url: URL) {
@@ -186,6 +190,7 @@ final class RolePets {
 
     func refresh(mode: CharacterMode = preferences.characterMode) {
         let now = clock()
+        assignments.load()
         let url = directory.appendingPathComponent("rules.json")
         if mode == .custom && now >= nextRulesRead {
             nextRulesRead = now + 60
@@ -249,6 +254,8 @@ final class RolePets {
         }
     }
 
+    func reload() { nextRead = -.infinity; nextRulesRead = -.infinity; refresh() }
+
     var customIDs: [String] { cache.keys.filter { cache[$0]?.pet != nil }.sorted() }
 
     func character(for pane: Agent, mode: CharacterMode) -> PetCharacter {
@@ -266,12 +273,23 @@ final class RolePets {
             }
             return .builtin(PetKind(rawValue: String(winner.dropFirst(8)))!)
         case .custom:
+            if let key = pane.sessionKey, let pet = agentOverrides[key] { return resolve(pet, for: pane) }
+            if let cell = AssignmentStore.winner(for: pane, document: assignments.document, home: home) { return resolve(cell.pet, for: pane) }
             return chooseCharacter(pane, rules: rules, home: home, fallback: fallback) { id in
                 guard let cached = self.cache[id] else { return nil }
                 if cached.pet != nil { return .custom(id, cached.revision) }
                 return cached.folder.date != nil ? .builtin(fallback) : nil
             }
         }
+    }
+
+    func resolve(_ token: String, for pane: Agent) -> PetCharacter {
+        let fallback = petKind(ofType: pane.agent)
+        if token.hasPrefix("builtin:") { return .builtin(PetKind(rawValue: String(token.dropFirst(8))) ?? fallback) }
+        let id = token.hasPrefix("custom:") ? String(token.dropFirst(7)) : token
+        if let cached = cache[id], cached.pet != nil { return .custom(id, cached.revision) }
+        if token == "generic" { return .builtin(pick(PetKind.generic, by: pane.id)) }
+        return .builtin(token == "agent" ? fallback : PetKind(rawValue: token) ?? fallback)
     }
 
     private func score(_ id: String, key: String) -> UInt64 {

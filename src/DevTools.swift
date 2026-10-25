@@ -32,6 +32,7 @@ func exportFrames(to directory: URL) throws {
 }
 
 func selfTest() {
+    studioSelfTest()
     rolePetsSelfTest()
     machineSelfTest()
     // Unplugging falls back to the next most recent monitor; replugging doesn't change the order.

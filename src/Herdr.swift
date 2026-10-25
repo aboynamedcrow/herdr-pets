@@ -5,6 +5,11 @@ let machinePollInterval = 6.0
 let machineListInterval = 60.0
 let machineHoldInterval = 60.0
 
+struct AgentSession: Decodable {
+    var value: String?
+    var kind: String?
+}
+
 struct Agent: Decodable {
     let terminal_id: String    // Stable inside one Herdr server
     let agent_status: String   // idle, working, blocked, done, unknown
@@ -14,9 +19,16 @@ struct Agent: Decodable {
     var machine = "local"
     var asleep = false         // Its machine stopped answering. The pet stays, dimmed, until the machine answers or leaves the list
 
+    var pane_id: String? = nil
+    var agent_session: AgentSession? = nil
+    var sessionKey: String? {
+        guard let value = agent_session?.value, !value.isEmpty else { return nil }
+        return "\(id):\(value.utf8.count):\(value)"
+    }
+
     // The length keeps separators inside either ID from causing a collision.
     var id: String { "\(machine.utf8.count):\(machine):\(terminal_id)" }
-    private enum CodingKeys: String, CodingKey { case terminal_id, agent_status, agent, label, cwd }
+    private enum CodingKeys: String, CodingKey { case terminal_id, agent_status, agent, label, cwd, pane_id, agent_session }
 }
 
 struct Machine: Decodable {
