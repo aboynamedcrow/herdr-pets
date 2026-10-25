@@ -3,11 +3,13 @@ import AppKit
 final class Controls: NSObject {
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let popover = NSPopover()
-    private let gallery = NSStackView()   // All 14 characters. Ones the current setting can't produce are dimmed
+    private let gallery = NSStackView()   // Built-in and custom pets. Dim art the current mode cannot produce
     private let statusLabel = label("", size: 12, weight: .medium)
     private let characterNote = label("", size: 11, secondary: true)
     private let sizeLabel = label("", size: 12, secondary: true)
     private let screens = NSPopUpButton()
+    private let customSizeLabel = label("", size: 12, secondary: true)
+    private let customSize = NSStepper()
     private let maxLabel = label("", size: 12, secondary: true)
     private var screenRows: [NSView] = []   // Monitor row and its separator. Shown only with two or more screens
     private var connected = true
@@ -26,9 +28,8 @@ final class Controls: NSObject {
 
     // Builds the panel. Called again when the language changes.
     private func build() {
-        let characters = NSSegmentedControl(labels: [t("에이전트 종류대로", "By agent type"), t("14종 골고루", "All 14")], trackingMode: .selectOne,
-                                            target: self, action: #selector(changeCharacters(_:)))
-        characters.selectedSegment = preferences.allCharacters ? 1 : 0
+        let characters = characterControl(language: preferences.language, target: self, action: #selector(changeCharacters(_:)))
+        characters.selectedSegment = CharacterMode.allCases.firstIndex(of: preferences.characterMode)!
         let quit = NSButton(title: t("종료", "Quit"), target: NSApp, action: #selector(NSApplication.terminate(_:)))
         let content = stack([
             stack([label("herdr-pets", size: 17, weight: .semibold), label(t("기다리는 에이전트가 달려와요", "Blocked agents' pets come to you"), size: 12, secondary: true), statusLabel], spacing: 4),
@@ -56,9 +57,10 @@ final class Controls: NSObject {
         let machines = NSSwitch()
         machines.state = preferences.otherMachines ? .on : .off
         machines.target = self; machines.action = #selector(changeMachines(_:))
-        let roles = NSSwitch()
-        roles.state = preferences.rolePets ? .on : .off
-        roles.target = self; roles.action = #selector(changeRoles(_:))
+        customSize.minValue = 100; customSize.maxValue = 200; customSize.increment = 10
+        customSize.integerValue = preferences.customPetSize
+        customSize.target = self; customSize.action = #selector(changeCustomSize(_:))
+        customSizeLabel.stringValue = "\(preferences.customPetSize)%"
         let limit = NSStepper()
         limit.minValue = 10; limit.maxValue = 60; limit.increment = 5
         limit.integerValue = maxPets
@@ -75,13 +77,13 @@ final class Controls: NSObject {
         screenRows = [row(label(t("모니터", "Monitor"), size: 13), screens), separator()]
 
         let rows = stack([
-            row(label(t("역할별 펫", "Role pets"), size: 13), roles),
-            separator(),
             row(label(t("최대 펫 수", "Max pets"), size: 13), row(maxLabel, limit)),
             separator(),
             row(label(t("펫 표시", "Show pets"), size: 13), visible),
             separator(),
             row(label(t("다른 머신", "Other machines"), size: 13), machines),
+            separator(),
+            row(label(t("커스텀 펫 크기", "Custom pet size"), size: 13), row(customSizeLabel, customSize)),
             separator(),
             stack([row(label(t("펫 크기", "Pet size"), size: 13), sizeLabel), size], spacing: 6),
             separator(),
@@ -126,21 +128,25 @@ final class Controls: NSObject {
     }
 
     private func refreshGallery() {
-        characterNote.stringValue = preferences.allCharacters
-            ? t("에이전트마다 14종 중 하나가 정해져요", "Each agent gets one of the 14")
-            : t("Claude·Codex는 전용 캐릭터, 나머지는 종류별로 정해져요", "Claude and Codex have their own; others by type")
-        var possible: Set<PetKind> = preferences.allCharacters ? Set(PetKind.allCases) : [.claude, .codex]
-        if !preferences.allCharacters { scene.agents.forEach { possible.insert(petKind(ofType: $0.agent)) } }
+        rolePets.refresh()
+        characterNote.stringValue = preferences.characterMode.note
+        customSize.isEnabled = preferences.characterMode == .village || preferences.characterMode == .custom
+        let possible = rolePets.possible(mode: preferences.characterMode, agents: scene.agents)
+        var entries = PetKind.allCases.map { (Sprites.thumbnail($0), $0.title, possible.builtin.contains($0)) }
+        entries += rolePets.customIDs.compactMap { id in
+            rolePets.thumbnail(id).map { ($0.image, $0.title, possible.custom.contains(id)) }
+        }
         gallery.arrangedSubviews.forEach { $0.removeFromSuperview() }
         gallery.orientation = .vertical
         gallery.spacing = 4
-        for line in [Array(PetKind.allCases.prefix(7)), Array(PetKind.allCases.dropFirst(7))] {
-            let images = line.map { kind -> NSView in
-                let image = NSImageView(image: Sprites.thumbnail(kind))
+        for start in stride(from: 0, to: entries.count, by: 7) {
+            let images = entries[start..<min(start + 7, entries.count)].map { entry -> NSView in
+                let image = NSImageView(image: entry.0)
+                image.imageScaling = .scaleProportionallyUpOrDown
                 image.widthAnchor.constraint(equalToConstant: 32).isActive = true
                 image.heightAnchor.constraint(equalToConstant: 32).isActive = true
-                image.alphaValue = possible.contains(kind) ? 1 : 0.22
-                image.toolTip = possible.contains(kind) ? kind.title : t("\(kind.title) · 지금 설정에서는 나오지 않아요", "\(kind.title) · Not used with this setting")
+                image.alphaValue = entry.2 ? 1 : 0.22
+                image.toolTip = entry.1
                 return image
             }
             let row = NSStackView(views: images)
@@ -161,7 +167,7 @@ final class Controls: NSObject {
 
     // apply brings back pets whose character changed.
     @objc private func changeCharacters(_ sender: NSSegmentedControl) {
-        preferences.allCharacters = sender.selectedSegment == 1
+        preferences.characterMode = CharacterMode.allCases[sender.selectedSegment]
         preferences.save()
         refreshGallery()
         scene.apply(scene.agents)
@@ -179,8 +185,9 @@ final class Controls: NSObject {
         poll()
     }
 
-    @objc private func changeRoles(_ sender: NSSwitch) {
-        preferences.rolePets = sender.state == .on
+    @objc private func changeCustomSize(_ sender: NSStepper) {
+        preferences.customPetSize = sender.integerValue
+        customSizeLabel.stringValue = "\(preferences.customPetSize)%"
         preferences.save()
         scene.apply(scene.agents)
     }
@@ -266,4 +273,15 @@ private func row(_ left: NSView, _ right: NSView) -> NSStackView {
     let spacer = NSView()
     spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
     return NSStackView(views: [left, spacer, right])
+}
+
+// The panel has 300 pt after its 20 pt margins.
+func characterControl(language: String, target: AnyObject? = nil, action: Selector? = nil) -> NSSegmentedControl {
+    let old = preferences.language
+    preferences.language = language
+    let control = NSSegmentedControl(labels: CharacterMode.allCases.map(\.title), trackingMode: .selectOne, target: target, action: action)
+    preferences.language = old
+    control.font = .systemFont(ofSize: 11)
+    control.segmentDistribution = .fill
+    return control
 }

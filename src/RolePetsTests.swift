@@ -32,7 +32,7 @@ func rolePetsSelfTest() {
         PetRule(role: ["orchestrator"], pet: "sample-f"),
     ]
     func choose(_ pane: Agent, _ list: [PetRule] = rules) -> PetCharacter {
-        chooseCharacter(pane, rules: list, home: home, fallback: petKind(for: pane)) {
+        chooseCharacter(pane, rules: list, home: home, fallback: petKind(ofType: pane.agent)) {
             $0.hasPrefix("sample-") ? .custom($0, 1) : nil
         }
     }
@@ -102,19 +102,25 @@ func rolePetsSelfTest() {
         try! FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: stamp)], ofItemAtPath: rulesFile.path)
     }
     var now = 0.0, logs: [String] = []
+    var unusedLogs: [String] = []
+    let withoutRules = RolePets(directory: directory.appendingPathComponent("absent"), clock: { now }, log: { unusedLogs.append($0) })
+    for mode in [CharacterMode.agent, .random, .village] { withoutRules.refresh(mode: mode) }
+    precondition(unusedLogs.isEmpty)
+    withoutRules.refresh(mode: .custom)
+    precondition(unusedLogs.count == 1)
     let catalog = RolePets(directory: directory, home: home, clock: { now }, log: { logs.append($0) })
     let pane = Agent(terminal_id: "a", agent_status: "idle", agent: "claude", label: "reviewer")
     catalog.refresh()
-    precondition(catalog.character(for: pane, enabled: true) == .builtin(.claude) && logs.count == 1)
+    precondition(catalog.character(for: pane, mode: .custom) == .builtin(.claude) && logs.count == 2)
     writeRules("bad json")
     now += 60; catalog.refresh()
-    precondition(catalog.character(for: pane, enabled: true) == .builtin(.claude) && logs.count == 1)
+    precondition(catalog.character(for: pane, mode: .custom) == .builtin(.claude) && logs.count == 2)
     writeRules("[{\"pet\":\"missing\"}]")
     now += 60; catalog.refresh()
-    precondition(catalog.character(for: pane, enabled: true) == .builtin(.claude) && logs.count == 2)
+    precondition(catalog.character(for: pane, mode: .custom) == .builtin(.claude) && logs.count == 3)
     writeRules("[{\"role\":\"reviewer\",\"pet\":\"sample\"}]")
     now += 60; catalog.refresh()
-    precondition(catalog.character(for: pane, enabled: true) == .builtin(.claude) && logs.count == 3)
+    precondition(catalog.character(for: pane, mode: .custom) == .builtin(.claude) && logs.count == 3)
     now += 60; catalog.refresh()
     precondition(logs.count == 3)
     print("PASS: role pets 4/10 missing rules, bad rules, missing id, missing sheet, one log per file")
@@ -124,21 +130,21 @@ func rolePetsSelfTest() {
     CGImageDestinationAddImage(destination, sheet, nil)
     precondition(CGImageDestinationFinalize(destination))
     catalog.refresh()
-    precondition(catalog.character(for: pane, enabled: true) == .builtin(.claude))
+    precondition(catalog.character(for: pane, mode: .custom) == .builtin(.claude))
     now += 60; catalog.refresh()
-    let custom = catalog.character(for: pane, enabled: true)
+    let custom = catalog.character(for: pane, mode: .custom)
     guard case .custom("sample", _) = custom else { preconditionFailure() }
     precondition(catalog.frames(for: custom)![.working]!.count == 2)
     now += 60; catalog.refresh()
-    precondition(catalog.character(for: pane, enabled: true) == custom)
-    precondition(catalog.character(for: pane, enabled: false) == .builtin(.claude))
-    preferences.allCharacters = true
-    precondition(catalog.character(for: pane, enabled: false) == .builtin(petKind(for: pane)))
+    precondition(catalog.character(for: pane, mode: .custom) == custom)
+    precondition(catalog.character(for: pane, mode: .agent) == .builtin(.claude))
+    preferences.characterMode = .random
+    precondition(catalog.character(for: pane, mode: .random) == .builtin(petKind(for: pane)))
     writeRules("[{\"pet\":\"agent\"}]")
-    now += 60; catalog.refresh()
-    precondition(catalog.character(for: pane, enabled: true) == .builtin(petKind(for: pane)))
-    preferences.allCharacters = false
-    print("PASS: role pets 5/10 PNG decode, 60-second reload, cached art, role toggle, agent setting")
+    now += 60; catalog.refresh(mode: .custom)
+    precondition(catalog.character(for: pane, mode: .custom) == .builtin(petKind(ofType: pane.agent)))
+    preferences.characterMode = .custom
+    print("PASS: role pets 5/10 PNG decode, 60-second reload, cached art, modes, agent fallback")
 
     writeRules("[{\"role\":\"reviewer\",\"pet\":\"sample\"}]")
     now += 60; catalog.refresh()
@@ -152,7 +158,24 @@ func rolePetsSelfTest() {
     scene.apply([renamed])
     precondition(scene.pets[pane.id] === pet && pet.position == position && pet.spot == spot && pet.character == .builtin(.claude))
     scene.apply([pane])
-    precondition(scene.pets[pane.id] === pet && pet.character == catalog.character(for: pane, enabled: true))
+    precondition(scene.pets[pane.id] === pet && pet.character == catalog.character(for: pane, mode: .custom))
+    let unruledFolder = directory.appendingPathComponent("unruled")
+    try! FileManager.default.createDirectory(at: unruledFolder, withIntermediateDirectories: true)
+    try! Data("{\"id\":\"unruled\",\"displayName\":\"Unruled sample\",\"spriteVersionNumber\":2,\"spritesheetPath\":\"sheet.png\"}".utf8)
+        .write(to: unruledFolder.appendingPathComponent("pet.json"))
+    try! FileManager.default.copyItem(at: sheetURL, to: unruledFolder.appendingPathComponent("sheet.png"))
+    now += 60; catalog.refresh()
+    precondition(catalog.customIDs == ["sample", "unruled"] && catalog.thumbnail("unruled")?.title == "Unruled sample")
+    let restarted = RolePets(directory: directory, home: home, clock: { now }, log: { _ in })
+    restarted.refresh()
+    for index in 0..<100 {
+        let candidate = Agent(terminal_id: "scan-\(index)", agent_status: "idle", agent: "codex")
+        let old = catalog.character(for: candidate, mode: .village), fresh = restarted.character(for: candidate, mode: .village)
+        if case .custom(let id, _) = old {
+            guard case .custom(let other, _) = fresh else { preconditionFailure() }
+            precondition(id == other)
+        } else { precondition(old == fresh) }
+    }
     try! FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 100)], ofItemAtPath: sheetURL.path)
     now += 60; scene.apply([pane])
     precondition(pet.character != custom && scene.pets[pane.id] === pet && pet.position == position)
@@ -175,11 +198,11 @@ func rolePetsSelfTest() {
     print("PASS: role pets 7/10 max pets 10, 20, 60 and awake/asleep order")
 
     let old = try! JSONDecoder().decode(Preferences.self, from: Data("{\"size\":32}".utf8))
-    precondition(old.rolePets && old.maxPets == 20)
+    precondition(old.characterMode == .custom && old.maxPets == 20)
     var saved = old
-    saved.rolePets = false; saved.maxPets = 60
+    saved.characterMode = .agent; saved.maxPets = 60
     let restored = try! JSONDecoder().decode(Preferences.self, from: JSONEncoder().encode(saved))
-    precondition(!restored.rolePets && restored.maxPets == 60 && restored.size == 32)
+    precondition(restored.characterMode == .agent && restored.maxPets == 60 && restored.size == 32)
     for (input, expected) in [(0, 10), (100, 60)] {
         let value = try! JSONDecoder().decode(Preferences.self, from: Data("{\"maxPets\":\(input)}".utf8))
         precondition(value.maxPets == expected)
@@ -190,10 +213,10 @@ func rolePetsSelfTest() {
     writeRules("[{\"pet\":\"sample\"}]")
     try! Data("{}".utf8).write(to: metadata)
     now += 60; catalog.refresh()
-    precondition(catalog.character(for: pane, enabled: true) == .builtin(.claude))
+    precondition(catalog.character(for: pane, mode: .custom) == .builtin(.claude))
     writeRules("[{\"pet\":\"../outside\"}]")
     now += 60; catalog.refresh()
-    precondition(catalog.character(for: pane, enabled: true) == .builtin(.claude))
+    precondition(catalog.character(for: pane, mode: .custom) == .builtin(.claude))
     print("PASS: role pets 9/10 bad metadata and invalid folder fallback")
 
     let orchestration = RolePets(directory: directory, home: home, clock: { now }, log: { _ in })
@@ -211,7 +234,155 @@ func rolePetsSelfTest() {
     try! FileManager.default.createDirectory(at: override, withIntermediateDirectories: true)
     writeRules("[{\"pet\":\"cat\"}]")
     now += 60; orchestration.refresh()
-    precondition(orchestration.character(for: pane, enabled: true) == .builtin(.claude))
+    precondition(orchestration.character(for: pane, mode: .custom) == .builtin(.claude))
+    catalogBoundarySelfTest(sheet)
+    modesSelfTest(art)
     preferences = Preferences()
     print("PASS: role pets 10/10 cwd position and bad custom override fallback")
+}
+
+private func catalogBoundarySelfTest(_ sheet: CGImage) {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let pets = directory.appendingPathComponent("pets"), source = directory.appendingPathComponent("source")
+    try! FileManager.default.createDirectory(at: pets, withIntermediateDirectories: true)
+    try! FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    try! Data("{\"id\":\"sample\",\"displayName\":\"Linked sample\",\"spriteVersionNumber\":2,\"spritesheetPath\":\"sheet.png\"}".utf8)
+        .write(to: source.appendingPathComponent("pet.json"))
+    let sheetURL = source.appendingPathComponent("sheet.png"), link = pets.appendingPathComponent("sample")
+    let destination = CGImageDestinationCreateWithURL(sheetURL as CFURL, "public.png" as CFString, 1, nil)!
+    CGImageDestinationAddImage(destination, sheet, nil)
+    precondition(CGImageDestinationFinalize(destination))
+    try! FileManager.default.createSymbolicLink(at: link, withDestinationURL: source)
+    var now = 0.0
+    let catalog = RolePets(directory: pets, clock: { now }, log: { _ in })
+    catalog.refresh(mode: .village)
+    precondition(catalog.customIDs == ["sample"] && catalog.thumbnail("sample")?.title == "Linked sample")
+    precondition(catalog.possible(mode: .village, agents: []).custom == ["sample"])
+    let keys = (0..<100).map { Agent(terminal_id: "review-\($0)", agent_status: "idle", agent: "claude") }
+    let picks = keys.map { catalog.character(for: $0, mode: .village) }
+    precondition(picks.contains { if case .custom("sample", _) = $0 { return true }; return false })
+    precondition(picks.contains { if case .builtin = $0 { return true }; return false })
+    precondition(keys[2].id == "5:local:review-2" && picks[2] == .builtin(.claude))
+    let restarted = RolePets(directory: pets, clock: { now }, log: { _ in })
+    restarted.refresh(mode: .village)
+    precondition(restarted.customIDs == ["sample"] && restarted.thumbnail("sample") != nil)
+    for (pane, pick) in zip(keys, picks) { precondition(restarted.character(for: pane, mode: .village) == pick) }
+    try! FileManager.default.removeItem(at: sheetURL)
+    now += 60; restarted.refresh(mode: .village)
+    precondition(restarted.customIDs.isEmpty)
+    for (pane, pick) in zip(keys, picks) {
+        if case .builtin = pick { precondition(restarted.character(for: pane, mode: .village) == pick) }
+    }
+    try! FileManager.default.removeItem(at: link)
+    now += 60; catalog.refresh(mode: .village)
+    precondition(catalog.customIDs.isEmpty)
+    for (pane, pick) in zip(keys, picks) {
+        if case .builtin = pick { precondition(catalog.character(for: pane, mode: .village) == pick) }
+    }
+    print("PASS: symlink scan, gallery, Village, restart, last custom failure and removal preserve 100 keys' built-in winners")
+}
+
+private func modesSelfTest(_ art: CustomPet) {
+    let rules = [PetRule(role: ["reviewer"], pet: "sample"), PetRule(role: ["oracle"], pet: "generic")]
+    let first = RolePets(rules: rules, customPets: ["sample": art, "unruled": art])
+    let second = RolePets(rules: rules, customPets: ["unruled": art, "sample": art])
+    let empty = RolePets(rules: [], customPets: [:])
+    for type in ["claude", "codex", "opencode"] {
+        let pane = Agent(terminal_id: "modes", agent_status: "idle", agent: type, label: "reviewer")
+        for mode in CharacterMode.allCases {
+            let value = first.character(for: pane, mode: mode)
+            precondition(value == second.character(for: pane, mode: mode))
+            switch mode {
+            case .agent: precondition(value == .builtin(petKind(ofType: type)))
+            case .random: precondition(value == .builtin(pick(PetKind.allCases, by: pane.id)))
+            case .custom: precondition(value == .custom("sample", 1))
+            case .village: precondition(value == first.character(for: pane, mode: mode))
+            }
+        }
+        guard case .builtin = empty.character(for: pane, mode: .village) else { preconditionFailure() }
+        precondition(empty.character(for: pane, mode: .custom) == first.character(for: pane, mode: .agent))
+        let fallback = Agent(terminal_id: "fallback", agent_status: "idle", agent: type)
+        precondition(first.character(for: fallback, mode: .custom) == .builtin(petKind(ofType: type)))
+        let agentRule = RolePets(rules: [PetRule(pet: "agent")], customPets: [:])
+        precondition(agentRule.character(for: pane, mode: .custom) == .builtin(petKind(ofType: type)))
+    }
+    let unruled = (0..<1000).map { Agent(terminal_id: "village-\($0)", agent_status: "idle", agent: "claude") }
+        .first { first.character(for: $0, mode: .village) == .custom("unruled", 1) }!
+    precondition(first.character(for: unruled, mode: .village) == second.character(for: unruled, mode: .village))
+    let removedLoser = RolePets(rules: [], customPets: ["unruled": art])
+    precondition(first.character(for: unruled, mode: .village) == removedLoser.character(for: unruled, mode: .village))
+    let possible = first.possible(mode: .custom, agents: [])
+    precondition(possible.custom == ["sample"] && possible.builtin == Set(PetKind.allCases))
+    precondition(first.possible(mode: .random, agents: []).custom.isEmpty)
+    precondition(first.possible(mode: .village, agents: []).custom == ["sample", "unruled"])
+    print("PASS: modes 1/4 four modes, three agent types, unruled Village pet, stable instances, empty fallbacks, gallery")
+
+    let rows: [(String, CharacterMode)] = [
+        ("{}", .custom), ("{\"allCharacters\":false}", .custom), ("{\"rolePets\":true,\"allCharacters\":false}", .custom),
+        ("{\"rolePets\":true,\"allCharacters\":true}", .custom), ("{\"allCharacters\":true}", .custom),
+        ("{\"rolePets\":false,\"allCharacters\":true}", .random),
+        ("{\"rolePets\":false,\"allCharacters\":false}", .agent), ("{\"rolePets\":false}", .agent),
+        ("{\"characterMode\":\"village\",\"rolePets\":true}", .village),
+    ]
+    for (json, mode) in rows {
+        let value = try! JSONDecoder().decode(Preferences.self, from: Data(json.utf8))
+        precondition(value.characterMode == mode)
+        let encoded = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(value)) as! [String: Any]
+        precondition(encoded["rolePets"] == nil && encoded["allCharacters"] == nil && encoded["characterMode"] as? String == mode.rawValue)
+    }
+    for (input, expected) in [(50, 100), (300, 200)] {
+        let value = try! JSONDecoder().decode(Preferences.self, from: Data("{\"customPetSize\":\(input)}".utf8))
+        precondition(value.customPetSize == expected)
+    }
+    precondition(Preferences().characterMode == .custom && Preferences().customPetSize == 130)
+    let unknown = try! JSONDecoder().decode(Preferences.self, from: Data("""
+    {"characterMode":"future-mode","rolePets":false,"allCharacters":true,
+     "size":42,"customPetSize":170,"maxPets":60,"visible":false,"otherMachines":false,
+     "reducedMotion":true,"language":"ko","screenOrder":["screen"],
+     "screenAreas":{"screen":{"right":11,"bottom":12,"width":200,"height":50}}}
+    """.utf8))
+    precondition(unknown.characterMode == .custom && unknown.size == 42 && unknown.customPetSize == 170 && unknown.maxPets == 60)
+    precondition(!unknown.visible && !unknown.otherMachines && unknown.reducedMotion && unknown.language == "ko")
+    precondition(unknown.screenOrder == ["screen"] && unknown.screenAreas.count == 1)
+    let placement = unknown.screenAreas["screen"]!
+    precondition(placement.right == 11 && placement.bottom == 12 && placement.width == 200 && placement.height == 50)
+    print("PASS: modes 2/4 legacy migration, unknown mode preserves settings, new keys, size defaults and clamps")
+
+    preferences.visible = false
+    let scene = PetScene(root: CALayer(), roles: first)
+    let pane = Agent(terminal_id: "size", agent_status: "blocked", agent: "claude", label: "reviewer")
+    preferences.characterMode = .custom
+    scene.apply([pane])
+    let pet = scene.pets[pane.id]!, spot = scene.pets[pane.id]!.spot, position = scene.pets[pane.id]!.position
+    let base = art.frames[.resting]![0]
+    let builtin = Sprites.frames(.claude)[.resting]![0].size
+    var offset: CGFloat = 0
+    for percent in [100, 130, 200] {
+        preferences.customPetSize = percent
+        scene.apply([pane])
+        let frame = first.frames(for: pet.character)![.resting]![0]
+        let factor = CGFloat(percent) / 100
+        precondition(abs(frame.size.height - base.size.height * factor) < 0.001)
+        precondition(abs(frame.size.width - base.size.width * factor) < 0.001)
+        precondition(frame.image === base.image && CGFloat(frame.image.height) >= frame.size.height * 3)
+        precondition(pet.artSize == frame.size && pet.badgeOffset > offset)
+        precondition(pet.badgeOffset > (frame.size.height - footOffset) * petScale)
+        precondition(scene.pets[pane.id] === pet && pet.position == position && pet.spot == spot)
+        precondition(Sprites.frames(.claude)[.resting]![0].size == builtin)
+        offset = pet.badgeOffset
+    }
+    for mode in CharacterMode.allCases {
+        preferences.characterMode = mode
+        scene.apply([pane])
+        precondition(scene.pets[pane.id] === pet && pet.position == position && pet.spot == spot)
+        precondition(pet.character == first.character(for: pane, mode: mode))
+    }
+    print("PASS: modes 3/4 custom sizes 100/130/200, shared pixels, built-in size, badge, immediate scene updates")
+
+    for language in ["en", "ko"] {
+        let control = characterControl(language: language)
+        precondition(control.fittingSize.width <= 300)
+        print("PASS: modes 4/4 \(language) character labels fit \(control.fittingSize.width) pt of 300 pt at 11 pt")
+    }
 }

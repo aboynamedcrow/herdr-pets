@@ -64,6 +64,7 @@ func chooseCharacter(_ pane: Agent, rules: [PetRule], home: String, fallback: Pe
 
 struct CustomPet {
     static let rowLimits = [6, 8, 8, 4, 5, 8, 6, 6, 6]
+    var displayName = ""
     let counts: [Int]
     let crop: CGRect
     let frames: [Pose: [Frame]]
@@ -100,14 +101,18 @@ struct CustomPet {
         for (pose, row) in [(Pose.working, 7), (.blocked, 6), (.celebrate, 4), (.resting, 0)] {
             result[pose] = try cells[row].map { cell in
                 guard let image = sheet.cropping(to: bounds.offsetBy(dx: cell.minX, dy: cell.minY)) else { throw PetLoadError.invalidSheet }
-                // Decode once, then retain only display-sized frames.
-                let context = bitmap(width: max(1, Int(ceil(size.width * 3))), height: max(1, Int(ceil(size.height * 3))))
+                // Decode once for 200%, 72 pt, Retina 2x.
+                let context = bitmap(width: max(1, Int(ceil(size.width * 6))), height: max(1, Int(ceil(size.height * 6))))
                 context.draw(image, in: CGRect(x: 0, y: 0, width: context.width, height: context.height))
                 guard let scaled = context.makeImage() else { throw PetLoadError.invalidSheet }
                 return Frame(image: scaled, size: size, anchorX: 0.5)
             }
         }
         frames = result
+    }
+    func frames(sizePercent: Int) -> [Pose: [Frame]] {
+        let scale = CGFloat(min(200, max(100, sizePercent))) / 100
+        return frames.mapValues { $0.map { Frame(image: $0.image, size: CGSize(width: $0.size.width * scale, height: $0.size.height * scale), anchorX: $0.anchorX) } }
     }
 }
 
@@ -146,6 +151,7 @@ final class RolePets {
     private let clock: () -> Double
     private let log: (String) -> Void
     private var nextRead = -Double.infinity
+    private var nextRulesRead = -Double.infinity
     private var rulesStamp: Stamp?
     private var rules: [PetRule] = []
     private var cache: [String: Cached] = [:]
@@ -162,20 +168,25 @@ final class RolePets {
         if logged.insert(url.path).inserted { log("Cannot load \(url.path). Using agent art.") }
     }
 
-    func refresh() {
+    func refresh(mode: CharacterMode = preferences.characterMode) {
         let now = clock()
+        let url = directory.appendingPathComponent("rules.json")
+        if mode == .custom && now >= nextRulesRead {
+            nextRulesRead = now + 60
+            let stamp = Stamp(url)
+            if stamp != rulesStamp {
+                rulesStamp = stamp
+                do { rules = try JSONDecoder().decode([PetRule].self, from: Data(contentsOf: url)) }
+                catch { rules = []; problem(url) }
+            }
+        }
         guard now >= nextRead else { return }
         nextRead = now + 60
-        let url = directory.appendingPathComponent("rules.json")
-        let stamp = Stamp(url)
-        if stamp != rulesStamp {
-            rulesStamp = stamp
-            do { rules = try JSONDecoder().decode([PetRule].self, from: Data(contentsOf: url)) }
-            catch { rules = []; problem(url) }
-        }
-        let ids = Set(rules.map(\.pet)).subtracting(["agent", "generic"])
+        let folders = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
+        let discovered = folders.filter { (try? $0.resolvingSymlinksInPath().resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }.map(\.lastPathComponent)
+        let ids = Set(rules.map(\.pet)).subtracting(["agent", "generic"]).union(discovered)
         cache = cache.filter { ids.contains($0.key) }
-        for id in ids {
+        for id in ids.sorted() {
             // IDs name a direct subfolder, never a path outside the pets folder.
             guard !id.isEmpty, id != ".", id != "..", !id.contains("/"), !id.contains("\\") else { problem(url); continue }
             let folder = directory.appendingPathComponent(id)
@@ -198,6 +209,7 @@ final class RolePets {
                 guard let source = CGImageSourceCreateWithURL(target as CFURL, nil),
                       let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { throw PetLoadError.invalidSheet }
                 loaded = try CustomPet(sheet: image)
+                loaded?.displayName = metadata.displayName
             } catch {
                 // A missing override folder for a built-in name is normal.
                 if sheetURL != nil || folderStamp.date != nil || PetKind(rawValue: id) == nil { problem(sheetURL ?? metadataURL) }
@@ -206,18 +218,74 @@ final class RolePets {
         }
     }
 
-    func character(for pane: Agent, enabled: Bool) -> PetCharacter {
-        let fallback = petKind(for: pane)
-        guard enabled else { return .builtin(fallback) }
-        return chooseCharacter(pane, rules: rules, home: home, fallback: fallback) { id in
-            guard let cached = self.cache[id] else { return nil }
-            if cached.pet != nil { return .custom(id, cached.revision) }
-            return cached.folder.date != nil ? .builtin(fallback) : nil
+    // In-memory fixtures keep self-tests independent of Herdr and private art.
+    convenience init(rules: [PetRule], customPets: [String: CustomPet]) {
+        self.init(directory: URL(fileURLWithPath: "/unused-pets-fixture"), home: "/fake/home", log: { _ in })
+        self.rules = rules
+        nextRead = .infinity
+        nextRulesRead = .infinity
+        let stamp = Stamp(directory)
+        for (id, pet) in customPets {
+            cache[id] = Cached(folder: stamp, metadata: stamp, sheetURL: nil, sheet: nil, pet: pet, revision: 1)
         }
     }
 
-    func frames(for character: PetCharacter) -> [Pose: [Frame]]? {
+    var customIDs: [String] { cache.keys.filter { cache[$0]?.pet != nil }.sorted() }
+
+    func character(for pane: Agent, mode: CharacterMode) -> PetCharacter {
+        let fallback = petKind(ofType: pane.agent)
+        switch mode {
+        case .agent: return .builtin(fallback)
+        case .random: return .builtin(pick(PetKind.allCases, by: pane.id))
+        case .village:
+            // Rendezvous scores isolate each candidate. Only a new winner changes a pick.
+            let candidates = PetKind.allCases.map { "builtin:" + $0.rawValue } + customIDs.map { "custom:" + $0 }
+            let winner = candidates.max { score($0, key: pane.id) < score($1, key: pane.id) }!
+            if winner.hasPrefix("custom:") {
+                let id = String(winner.dropFirst(7))
+                return .custom(id, cache[id]!.revision)
+            }
+            return .builtin(PetKind(rawValue: String(winner.dropFirst(8)))!)
+        case .custom:
+            return chooseCharacter(pane, rules: rules, home: home, fallback: fallback) { id in
+                guard let cached = self.cache[id] else { return nil }
+                if cached.pet != nil { return .custom(id, cached.revision) }
+                return cached.folder.date != nil ? .builtin(fallback) : nil
+            }
+        }
+    }
+
+    private func score(_ id: String, key: String) -> UInt64 {
+        var hash: UInt64 = 14695981039346656037
+        for byte in "\(key.utf8.count):\(key):\(id)".utf8 { hash = (hash ^ UInt64(byte)) &* 1099511628211 }
+        return hash
+    }
+
+    func possible(mode: CharacterMode, agents: [Agent]) -> (builtin: Set<PetKind>, custom: Set<String>) {
+        let agentKinds = Set([PetKind.claude, .codex] + agents.map { petKind(ofType: $0.agent) })
+        switch mode {
+        case .agent: return (agentKinds, [])
+        case .random: return (Set(PetKind.allCases), [])
+        case .village: return (Set(PetKind.allCases), Set(customIDs))
+        case .custom:
+            var builtin = agentKinds, custom: Set<String> = []
+            for rule in rules {
+                if rule.pet == "agent" { continue }
+                if rule.pet == "generic" { builtin.formUnion(PetKind.generic) }
+                else if cache[rule.pet]?.pet != nil { custom.insert(rule.pet) }
+                else if cache[rule.pet]?.folder.date == nil, let kind = PetKind(rawValue: rule.pet) { builtin.insert(kind) }
+            }
+            return (builtin, custom)
+        }
+    }
+
+    func thumbnail(_ id: String) -> (image: NSImage, title: String)? {
+        guard let pet = cache[id]?.pet, let frame = pet.frames[.resting]?.first else { return nil }
+        return (NSImage(cgImage: frame.image, size: frame.size), pet.displayName)
+    }
+
+    func frames(for character: PetCharacter, sizePercent: Int = preferences.customPetSize) -> [Pose: [Frame]]? {
         guard case .custom(let id, _) = character else { return nil }
-        return cache[id]?.pet?.frames
+        return cache[id]?.pet?.frames(sizePercent: sizePercent)
     }
 }
