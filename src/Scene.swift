@@ -4,7 +4,7 @@ let maxPets = 20
 
 // Scene coordinates = the whole screen the overlay covers.
 final class PetScene {
-    private(set) var pets: [String: Pet] = [:]    // terminal_id → pet
+    private(set) var pets: [String: Pet] = [:]    // machine + terminal_id → pet
     private(set) var agents: [Agent] = []
     var area = CGRect.zero          // Crowd area
     var walls = CGRect.zero         // Screen below the menu bar and above the Dock
@@ -24,19 +24,19 @@ final class PetScene {
         self.agents = agents
         let shown = (agents.filter { $0.agent_status == "blocked" } + agents.filter { $0.agent_status != "blocked" }).prefix(maxPets)
         var changed = false
-        for (id, pet) in pets where !shown.contains(where: { $0.terminal_id == id && petKind(for: $0) == pet.kind }) {
+        for (id, pet) in pets where !shown.contains(where: { $0.id == id && petKind(for: $0) == pet.kind }) {
             changed = true
             pets[id] = nil
             pet.fade(out: true)
         }
         let band = crowdBand(area, scale: petScale)
         for agent in shown {
-            let pet = pets[agent.terminal_id] ?? {
-                let pet = Pet(id: agent.terminal_id, kind: petKind(for: agent), spot: freeSpot(in: band), in: band)
+            let pet = pets[agent.id] ?? {
+                let pet = Pet(id: agent.id, kind: petKind(for: agent), spot: freeSpot(in: band), in: band)
                 root.addSublayer(pet.layer)
                 root.addSublayer(pet.badge)
                 pet.fade(out: false)
-                pets[agent.terminal_id] = pet
+                pets[agent.id] = pet
                 return pet
             }()
             if pet.setStatus(agent.agent_status) { changed = true }

@@ -38,24 +38,17 @@ NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenPar
 NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main) { _ in scene.wake() }   // macOS Reduce Motion
 controls.install()
 
-// Skip while a read is in flight.
-var polling = false
-var failures = 0
-func poll() {
-    guard !polling else { return }
-    polling = true
+let agentPoller = AgentPoller(launchedByPlugin: launchedByPlugin, readAgents: { machine, complete in
     DispatchQueue.global().async {
-        let agents = demo ? demoAgents() : fetchAgents()
-        DispatchQueue.main.async {
-            polling = false
-            failures = agents == nil ? failures + 1 : 0
-            if launchedByPlugin && failures >= 15 { exit(0) }   // Herdr server is gone for 30 seconds
-
-            if let agents { scene.apply(agents) }   // Keep the previous state if the read fails
-            controls.refresh(connected: agents != nil)
-        }
+        let agents = demo ? demoAgents() : fetchAgents(machine: machine)
+        DispatchQueue.main.async { complete(agents) }
     }
+}) { agents, connected, shouldExit in
+    if shouldExit { exit(0) }
+    scene.apply(agents)
+    controls.refresh(connected: connected)
 }
+func poll() { agentPoller.tick(otherMachines: preferences.otherMachines && !demo) }
 poll()
-Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in poll() }
+Timer.scheduledTimer(withTimeInterval: localPollInterval, repeats: true) { _ in poll() }
 NSApplication.shared.run()

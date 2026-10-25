@@ -52,6 +52,9 @@ final class Controls: NSObject {
         let visible = NSSwitch()
         visible.state = preferences.visible ? .on : .off
         visible.target = self; visible.action = #selector(changeVisible(_:))
+        let machines = NSSwitch()
+        machines.state = preferences.otherMachines ? .on : .off
+        machines.target = self; machines.action = #selector(changeMachines(_:))
         let still = NSSwitch()
         still.state = preferences.reducedMotion ? .on : .off
         still.target = self; still.action = #selector(changeMotion(_:))
@@ -64,6 +67,8 @@ final class Controls: NSObject {
 
         let rows = stack([
             row(label(t("펫 표시", "Show pets"), size: 13), visible),
+            separator(),
+            row(label(t("다른 머신", "Other machines"), size: 13), machines),
             separator(),
             stack([row(label(t("펫 크기", "Pet size"), size: 13), sizeLabel), size], spacing: 6),
             separator(),
@@ -151,6 +156,12 @@ final class Controls: NSObject {
         preferences.visible = sender.state == .on
         preferences.save()
         if preferences.visible { overlay.orderFrontRegardless(); scene.wake() } else { overlay.orderOut(nil); scene.stop() }
+    }
+
+    @objc private func changeMachines(_ sender: NSSwitch) {
+        preferences.otherMachines = sender.state == .on
+        preferences.save()
+        poll()
     }
 
     @objc private func changeMotion(_ sender: NSSwitch) {

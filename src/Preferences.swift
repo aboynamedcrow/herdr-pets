@@ -29,6 +29,7 @@ extension ScreenArea {
 struct Preferences: Codable {
     var size: Double = 24              // pt, sizeRange
     var visible = true
+    var otherMachines = true
     var reducedMotion = false
     var allCharacters = false          // false: character by agent kind, true: one of 14 per agent
     var screenAreas: [String: ScreenArea] = [:]   // Crowd area per monitor, keyed by NSScreen.placementID
@@ -48,6 +49,7 @@ struct Preferences: Codable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         size = try c.decodeIfPresent(Double.self, forKey: .size) ?? size
         visible = try c.decodeIfPresent(Bool.self, forKey: .visible) ?? visible
+        otherMachines = try c.decodeIfPresent(Bool.self, forKey: .otherMachines) ?? otherMachines
         reducedMotion = try c.decodeIfPresent(Bool.self, forKey: .reducedMotion) ?? reducedMotion
         allCharacters = try c.decodeIfPresent(Bool.self, forKey: .allCharacters) ?? allCharacters
         screenAreas = try c.decodeIfPresent([String: ScreenArea].self, forKey: .screenAreas) ?? [:]

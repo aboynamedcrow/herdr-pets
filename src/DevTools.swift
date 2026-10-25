@@ -32,6 +32,7 @@ func exportFrames(to directory: URL) throws {
 }
 
 func selfTest() {
+    machineSelfTest()
     // Unplugging falls back to the next most recent monitor; replugging doesn't change the order.
     var settings = Preferences()
     let frame = CGRect(x: 1000, y: 0, width: 1000, height: 800)
@@ -118,4 +119,205 @@ func selfTest() {
     }
     precondition(atWall < 120 * 15 / 5)
     print("PASS: assets, character assignment, working moves / idle rests / blocked edge run / return at 4 sizes, area move keeps spread")
+}
+
+// Fetchers queue replies until the test releases them. The clock never waits.
+private final class PollerFixture {
+    var now = 100.0
+    var agentReads: [String: Int] = [:]
+    var listReads = 0
+    var pending: [String: ([Agent]?) -> Void] = [:]
+    var pendingList: (([Machine]?) -> Void)?
+    var agents: [Agent] = []
+    var connected = true
+    var shouldExit = false
+    var poller: AgentPoller!
+
+    init(plugin: Bool = true) {
+        poller = AgentPoller(launchedByPlugin: plugin, clock: { self.now }, readAgents: { machine, complete in
+            let id = machine ?? "local"
+            precondition(self.pending[id] == nil, "overlapping poll: \(id)")
+            self.agentReads[id, default: 0] += 1
+            self.pending[id] = complete
+        }, readMachines: { complete in
+            precondition(self.pendingList == nil, "overlapping machine list")
+            self.listReads += 1
+            self.pendingList = complete
+        }) { agents, connected, shouldExit in
+            self.agents = agents
+            self.connected = connected
+            self.shouldExit = shouldExit
+        }
+    }
+
+    func tick(_ seconds: Double = 0, others: Bool = true) {
+        now += seconds
+        poller.tick(otherMachines: others)
+    }
+
+    func reply(_ machine: String, _ agents: [Agent]?) {
+        let complete = pending.removeValue(forKey: machine)!
+        complete(agents)
+    }
+
+    func machines(_ machines: [Machine]?) {
+        let complete = pendingList!
+        pendingList = nil
+        complete(machines)
+    }
+}
+
+private func machineSelfTest() {
+    let agent = Agent(terminal_id: "term-1", agent_status: "idle", agent: "codex")
+    let profiles = [Machine(id: "mac-a", enabled: true), Machine(id: "mac-b", enabled: true), Machine(id: "off", enabled: false)]
+
+    // Merge identical terminal IDs without a collision. Only enabled profiles are read.
+    let f = PollerFixture()
+    f.tick()
+    f.reply("local", [agent])
+    f.machines(profiles)
+    f.reply("mac-a", [agent])
+    f.reply("mac-b", [agent])
+    precondition(f.agents.map(\.machine) == ["local", "mac-a", "mac-b"])
+    precondition(Set(f.agents.map(\.id)).count == 3 && f.pending["off"] == nil)
+    precondition(f.agents[0].terminal_id == f.agents[1].terminal_id)
+    precondition(Agent(terminal_id: "b:c", agent_status: "idle", machine: "a").id != Agent(terminal_id: "c", agent_status: "idle", machine: "a:b").id)
+    print("PASS: machines 1/8 merge, enabled profiles, collision-free keys")
+
+    // Local reads each 2 seconds, remotes each 6, and profiles each 60.
+    f.tick(2)
+    precondition(f.agentReads["local"] == 2 && f.agentReads["mac-a"] == 1 && f.listReads == 1)
+    f.tick(4)   // Keep Local pending to prove that another source can still start.
+    precondition(f.agentReads["local"] == 2 && f.agentReads["mac-a"] == 2)
+    f.tick(6)
+    precondition(f.agentReads["mac-a"] == 2 && f.agentReads["mac-b"] == 2)
+    f.reply("local", [])
+    f.reply("mac-a", [agent])
+    f.reply("mac-b", [agent])
+    f.tick(47)
+    precondition(f.listReads == 1)
+    f.tick(1)
+    precondition(f.listReads == 2)
+    f.tick(60)
+    precondition(f.listReads == 2)   // One discovery call can stay pending too.
+    print("PASS: machines 2/8 poll intervals and one in-flight call per source")
+
+    // Labels never enter the pet key or character choice, and the scene keeps its pet.
+    let before = f.agents.first { $0.machine == "mac-a" }!
+    let oldVisible = preferences.visible, oldCharacters = preferences.allCharacters
+    preferences.visible = false
+    preferences.allCharacters = true
+    let character = petKind(for: before)
+    let testScene = PetScene(root: CALayer())
+    testScene.apply(f.agents)
+    let pet = testScene.pets[before.id]!
+    let position = pet.position
+    let renamed = try! JSONDecoder().decode([Machine].self, from: Data("[{\"id\":\"mac-a\",\"label\":\"New label 99\",\"enabled\":true},{\"id\":\"mac-b\",\"enabled\":true}]".utf8))
+    f.machines(renamed)
+    testScene.apply(f.agents)
+    precondition(testScene.pets[before.id] === pet && pet.position == position)
+    precondition(petKind(for: f.agents.first { $0.machine == "mac-a" }!) == character)
+    preferences.visible = oldVisible
+    preferences.allCharacters = oldCharacters
+    print("PASS: machines 3/8 label changes keep character, pet, and position")
+
+    // Start the hold at the first failed reply. Repeated failures never extend it.
+    let hold = PollerFixture()
+    hold.tick()
+    hold.reply("local", [agent])
+    hold.machines([profiles[0]])
+    hold.reply("mac-a", [agent])
+    hold.tick(6)
+    hold.reply("mac-a", nil)
+    hold.tick(59.9)
+    hold.reply("mac-a", nil)
+    precondition(hold.agents.count == 2 && hold.connected && !hold.shouldExit)
+    hold.tick(0.1)
+    precondition(hold.agents.map(\.machine) == ["local"])
+    hold.tick(6)
+    hold.reply("mac-a", [agent])
+    precondition(hold.agents.count == 2 && hold.agents[1].id == before.id)
+    hold.tick(6)
+    hold.reply("mac-a", [])
+    precondition(hold.agents.count == 1)   // An empty success removes old pets at once.
+    print("PASS: machines 4/8 60-second hold, expiry, recovery, empty success")
+
+    // Off starts no discovery or remote call, even after an old reply arrives.
+    let toggle = PollerFixture()
+    toggle.tick(others: false)
+    toggle.reply("local", [agent])
+    precondition(toggle.listReads == 0 && toggle.agentReads == ["local": 1])
+    toggle.tick(others: true)
+    toggle.machines([profiles[0]])
+    toggle.tick(others: false)
+    toggle.reply("mac-a", [agent])
+    precondition(toggle.agents.map(\.machine) == ["local"])
+    toggle.tick(60, others: false)
+    precondition(toggle.listReads == 1 && toggle.agentReads["mac-a"] == 1)
+    toggle.tick(others: true)
+    toggle.tick(others: false)
+    toggle.machines(profiles)   // Ignore a discovery reply started before Off.
+    precondition(toggle.agentReads["mac-b"] == nil)
+    toggle.tick(others: true)
+    toggle.machines([profiles[0]])
+    toggle.reply("mac-a", [agent])
+    precondition(toggle.agents.count == 2)
+    print("PASS: machines 5/8 Local-only setting and late replies")
+
+    // A removed and re-added profile cannot accept its earlier pending reply.
+    let removal = PollerFixture()
+    removal.tick()
+    removal.reply("local", [])
+    removal.machines([profiles[0]])
+    removal.tick(60)
+    removal.machines([])
+    removal.tick(60)
+    removal.machines([profiles[0]])
+    precondition(removal.agentReads["mac-a"] == 1)
+    removal.reply("mac-a", [agent])
+    precondition(removal.agents.isEmpty)
+    removal.tick()
+    removal.reply("mac-a", [agent])
+    precondition(removal.agents.count == 1)
+    removal.tick(60)
+    removal.machines(nil)
+    precondition(removal.agents.count == 1)   // A discovery failure keeps known profiles.
+    removal.tick(60)
+    removal.machines([Machine(id: "mac-a", enabled: false)])
+    precondition(removal.agents.isEmpty)
+    print("PASS: machines 6/8 removal, re-addition, discovery failure, disabled profile")
+
+    // Only completed Local failures count toward plugin exit. Success resets the count.
+    for plugin in [false, true] {
+        let exit = PollerFixture(plugin: plugin)
+        exit.tick()
+        exit.machines([profiles[0]])
+        exit.reply("local", [agent])
+        exit.reply("mac-a", nil)
+        for _ in 0..<15 {
+            exit.tick(6)
+            exit.reply("local", [])
+            exit.reply("mac-a", nil)
+            precondition(exit.poller.localFailures == 0 && !exit.shouldExit)
+        }
+        for count in 1...14 {
+            exit.tick(2)
+            exit.reply("local", nil)
+            precondition(exit.poller.localFailures == count && !exit.shouldExit && !exit.connected)
+        }
+        exit.tick(2)
+        exit.reply("local", nil)
+        precondition(exit.shouldExit == plugin)
+        exit.tick(2)
+        exit.reply("local", [agent])
+        precondition(exit.poller.localFailures == 0 && !exit.shouldExit && exit.connected)
+    }
+    print("PASS: machines 7/8 remote failures never exit, 15 Local failures, reset, direct run")
+
+    var settings = try! JSONDecoder().decode(Preferences.self, from: Data("{\"size\":32}".utf8))
+    precondition(settings.otherMachines && settings.size == 32)
+    settings.otherMachines = false
+    let saved = try! JSONDecoder().decode(Preferences.self, from: JSONEncoder().encode(settings))
+    precondition(!saved.otherMachines && saved.size == 32)
+    print("PASS: machines 8/8 preference default and persistence")
 }
