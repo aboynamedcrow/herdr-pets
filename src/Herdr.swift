@@ -9,12 +9,14 @@ struct Agent: Decodable {
     let terminal_id: String    // Stable inside one Herdr server
     let agent_status: String   // idle, working, blocked, done, unknown
     var agent: String? = nil   // claude, codex …
+    var label: String? = nil
+    var cwd: String? = nil
     var machine = "local"
     var asleep = false         // Its machine stopped answering. The pet stays, dimmed, until the machine answers or leaves the list
 
     // The length keeps separators inside either ID from causing a collision.
     var id: String { "\(machine.utf8.count):\(machine):\(terminal_id)" }
-    private enum CodingKeys: String, CodingKey { case terminal_id, agent_status, agent }
+    private enum CodingKeys: String, CodingKey { case terminal_id, agent_status, agent, label, cwd }
 }
 
 struct Machine: Decodable {
@@ -36,13 +38,17 @@ func herdrData(_ arguments: [String]) -> Data? {
     return process.terminationStatus == 0 ? data : nil
 }
 
-func fetchAgents(machine: String? = nil) -> [Agent]? {
+func decodePanes(_ data: Data) throws -> [Agent] {
     struct Response: Decodable {
-        struct Result: Decodable { let agents: [Agent] }
+        struct Result: Decodable { let panes: [Agent] }
         let result: Result
     }
-    guard let data = herdrData((machine.map { ["--machine", $0] } ?? []) + ["agent", "list"]) else { return nil }
-    return try? JSONDecoder().decode(Response.self, from: data).result.agents
+    return try JSONDecoder().decode(Response.self, from: data).result.panes.filter { $0.agent != nil }
+}
+
+func fetchAgents(machine: String? = nil) -> [Agent]? {
+    guard let data = herdrData((machine.map { ["--machine", $0] } ?? []) + ["pane", "list"]) else { return nil }
+    return try? decodePanes(data)
 }
 
 func fetchMachines() -> [Machine]? {

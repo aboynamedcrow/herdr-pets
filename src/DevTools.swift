@@ -32,6 +32,7 @@ func exportFrames(to directory: URL) throws {
 }
 
 func selfTest() {
+    rolePetsSelfTest()
     machineSelfTest()
     // Unplugging falls back to the next most recent monitor; replugging doesn't change the order.
     var settings = Preferences()
@@ -202,7 +203,7 @@ private func machineSelfTest() {
     precondition(f.listReads == 2)   // One discovery call can stay pending too.
     print("PASS: machines 2/8 poll intervals and one in-flight call per source")
 
-    // Labels never enter the pet key or character choice, and the scene keeps its pet.
+    // Machine display labels never enter the pet key or character choice.
     let before = f.agents.first { $0.machine == "mac-a" }!
     let oldVisible = preferences.visible, oldCharacters = preferences.allCharacters
     preferences.visible = false

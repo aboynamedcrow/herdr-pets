@@ -30,6 +30,8 @@ struct Preferences: Codable {
     var size: Double = 24              // pt, sizeRange
     var visible = true
     var otherMachines = true
+    var rolePets = true
+    var maxPets = 20
     var reducedMotion = false
     var allCharacters = false          // false: character by agent kind, true: one of 14 per agent
     var screenAreas: [String: ScreenArea] = [:]   // Crowd area per monitor, keyed by NSScreen.placementID
@@ -50,6 +52,8 @@ struct Preferences: Codable {
         size = try c.decodeIfPresent(Double.self, forKey: .size) ?? size
         visible = try c.decodeIfPresent(Bool.self, forKey: .visible) ?? visible
         otherMachines = try c.decodeIfPresent(Bool.self, forKey: .otherMachines) ?? otherMachines
+        rolePets = try c.decodeIfPresent(Bool.self, forKey: .rolePets) ?? rolePets
+        maxPets = min(60, max(10, try c.decodeIfPresent(Int.self, forKey: .maxPets) ?? maxPets))
         reducedMotion = try c.decodeIfPresent(Bool.self, forKey: .reducedMotion) ?? reducedMotion
         allCharacters = try c.decodeIfPresent(Bool.self, forKey: .allCharacters) ?? allCharacters
         screenAreas = try c.decodeIfPresent([String: ScreenArea].self, forKey: .screenAreas) ?? [:]
