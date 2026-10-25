@@ -2,6 +2,8 @@
 
 English | [한국어](README.ko.md)
 
+This is the [aboynamedcrow fork](https://github.com/aboynamedcrow/herdr-pets) of [hmu332233/herdr-pets](https://github.com/hmu332233/herdr-pets).
+
 ![The 14 herdr-pets characters](assets/readme/characters.png)
 
 ![Pets gathered above the Dock, one running toward the pointer](assets/readme/demo.gif)
@@ -17,13 +19,13 @@ Requirements:
 - Xcode Command Line Tools (the app is built with Swift on install)
 
 ```sh
-herdr plugin install hmu332233/herdr-pets
+herdr plugin install aboynamedcrow/herdr-pets
 ```
 
 After installation, Herdr starts the app and the pets appear when an agent first changes status.
 The app also starts automatically when the Herdr server restarts.
 
-The menu bar shows a pet icon; click it to open the settings panel.
+The menu bar shows a pet icon. Click it to open the settings panel.
 
 ## How it works
 
@@ -38,6 +40,20 @@ The menu bar shows a pet icon; click it to open the settings panel.
 
 herdr-pets reads only agent status from Herdr, and the pets never block clicks or take focus.
 
+## Machines
+
+Pets show agents from Local and every enabled machine in Herdr's saved machine list.
+Local refreshes every 2 seconds. Other machines refresh every 6 seconds.
+The app reads the machine list at startup and every 60 seconds.
+Machine IDs keep pets stable when labels change.
+If a machine poll fails, its pets stay for 60 seconds after the first failure.
+After that hold they fall asleep: they rest in place, dimmed, with a gray z badge.
+They wake when a poll succeeds. They leave when the machine is disabled or removed, or when the setting is off.
+Asleep pets use the slots left after all awake pets, up to 20 pets in all. So an agent that waits for you on an unreachable machine stays on screen while there are 20 agents or fewer in all.
+Only Local failures count toward the app's automatic exit.
+Turn **Other machines** off for Local only. This stops new remote calls and removes remote pets.
+The app still shows up to 20 pets: awake blocked agents first, then other awake agents, then asleep agents.
+
 ## Settings
 
 The settings panel, opened from the menu bar icon, shows the total number of agents and the number of blocked agents at the top.
@@ -46,14 +62,15 @@ The settings panel, opened from the menu bar icon, shows the total number of age
 
 | Setting | Description |
 | --- | --- |
-| **By agent type** | Claude and Codex get their own characters; other agents get a fixed character per agent type |
+| **By agent type** | Claude and Codex get their own characters. Other agents get a fixed character per agent type |
 | **All 14** | Each agent gets one of the 14 characters |
 | **Show pets** | Show or hide the pets |
+| **Other machines** | Show agents from enabled saved machines. On by default |
 | **Pet size** | Adjust pet size from 16–72 pt while **!** and **✓** stay the same size |
 | **Reduce motion** | Pets show status through poses without moving, and also follow the macOS Reduce Motion setting |
 | **Home area → Set…** | Move and resize the translucent window, then close it to save its position and size |
 | **Monitor** | With two or more monitors, choose which one shows the pets. The home area moves to the same spot on that monitor |
-| **Language** | Defaults to the macOS language; switch to 한국어 or English |
+| **Language** | Defaults to the macOS language. Switch to 한국어 or English |
 | **Quit** | Quit the app |
 
 Settings are saved in the plugin config folder, which you can locate with this command:
@@ -92,7 +109,7 @@ herdr plugin log list --plugin dev.minung.herdr-pets --limit 20
 - After installation, an agent must change status before the pets appear.
 - If a run shows exit code 1, `bin/pets` was not built.
   Install Xcode Command Line Tools with `xcode-select --install`, then reinstall the plugin.
-- Only one instance of the app runs at a time, so if you use multiple Herdr sessions, pets appear only for the session that started the app first.
+- Only one instance of the app runs at a time. With multiple Local Herdr sessions, it reads the session that started it first.
 
 ## Development
 
@@ -114,7 +131,7 @@ You can also run the app directly.
 | --- | --- |
 | `./bin/pets` | Show pets for running Herdr agents |
 | `./bin/pets --demo` | Show all 14 characters without Herdr, changing their status every 12 seconds |
-| `./bin/pets --self-test` | Check images, character selection, and movement without a window |
+| `./bin/pets --self-test` | Check images, characters, movement, and machine polling with fake fetchers and a clock |
 | `./bin/pets --export-frames <directory>` | Export frame images to check that animations do not jitter |
 
 When run directly, the app finds `herdr` through `PATH` or `HERDR_BIN_PATH` and saves settings in `pets-preferences.json` in the project folder.

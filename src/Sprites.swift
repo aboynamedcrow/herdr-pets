@@ -35,7 +35,7 @@ enum PetKind: String, CaseIterable {
 // Character for an agent. By default chosen by agent kind (claude → Claude);
 // with the "all characters" option, each agent gets a fixed one of 14.
 func petKind(for agent: Agent) -> PetKind {
-    if preferences.allCharacters && !demo { return pick(PetKind.allCases, by: agent.terminal_id) }
+    if preferences.allCharacters && !demo { return pick(PetKind.allCases, by: agent.id) }
     return petKind(ofType: agent.agent)
 }
 

@@ -52,6 +52,9 @@ final class Controls: NSObject {
         let visible = NSSwitch()
         visible.state = preferences.visible ? .on : .off
         visible.target = self; visible.action = #selector(changeVisible(_:))
+        let machines = NSSwitch()
+        machines.state = preferences.otherMachines ? .on : .off
+        machines.target = self; machines.action = #selector(changeMachines(_:))
         let still = NSSwitch()
         still.state = preferences.reducedMotion ? .on : .off
         still.target = self; still.action = #selector(changeMotion(_:))
@@ -64,6 +67,8 @@ final class Controls: NSObject {
 
         let rows = stack([
             row(label(t("펫 표시", "Show pets"), size: 13), visible),
+            separator(),
+            row(label(t("다른 머신", "Other machines"), size: 13), machines),
             separator(),
             stack([row(label(t("펫 크기", "Pet size"), size: 13), sizeLabel), size], spacing: 6),
             separator(),
@@ -93,12 +98,14 @@ final class Controls: NSObject {
     func refresh(connected: Bool) {
         self.connected = connected
         let count = scene.agents.count
-        let waiting = scene.agents.filter { $0.agent_status == "blocked" }.count
+        let waiting = scene.agents.filter { $0.agent_status == "blocked" && !$0.asleep }.count
+        let asleep = scene.agents.filter(\.asleep).count
         var text = demo ? t("미리보기 · 펫 \(count)마리", "Preview · \(count) pets")
             : !connected ? t("Herdr 연결을 기다리는 중", "Waiting for Herdr")
             : count == 0 ? t("실행 중인 에이전트가 없어요", "No agents running")
             : waiting > 0 ? t("에이전트 \(count) · \(waiting)개 기다리는 중", "Agents \(count) · \(waiting) blocked")
             : t("에이전트 \(count)", "Agents \(count)")
+        if asleep > 0 && !demo && connected { text += t(" · \(asleep)개는 연결 끊김", " · \(asleep) asleep") }   // Their machine stopped answering
         if count > scene.pets.count { text += t(" · \(count - scene.pets.count)개는 숨김", " · \(count - scene.pets.count) hidden") }   // Pets over the display limit
         statusLabel.stringValue = text
         statusLabel.textColor = waiting > 0 ? .systemOrange : .secondaryLabelColor
@@ -151,6 +158,12 @@ final class Controls: NSObject {
         preferences.visible = sender.state == .on
         preferences.save()
         if preferences.visible { overlay.orderFrontRegardless(); scene.wake() } else { overlay.orderOut(nil); scene.stop() }
+    }
+
+    @objc private func changeMachines(_ sender: NSSwitch) {
+        preferences.otherMachines = sender.state == .on
+        preferences.save()
+        poll()
     }
 
     @objc private func changeMotion(_ sender: NSSwitch) {

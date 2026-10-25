@@ -87,11 +87,12 @@ struct Perimeter {
 // working: short quick trips around the area, tapping in place in between. idle/done: rests in place.
 // When the area changes, each pet runs to its own spot in the new one, so the crowd keeps its spread.
 // blocked: startled hop, climbs the nearest screen edge, runs along it to near the cursor and waves.
+// asleep: its machine stopped answering. Rests in place, dimmed, with a z badge.
 final class Pet {
     let kind: PetKind
     let spot: CGPoint
     let layer = CALayer()         // Position, rotation, scale, and order among pets
-    let badge = CALayer()         // ! or ✓. Added to the scene root above the pets, so another pet's body never covers it
+    let badge = CALayer()         // !, ✓ or z. Added to the scene root above the pets, so another pet's body never covers it
     private let body = CALayer()  // Bounce and left/right facing
     private let sprite = CALayer()
     private let frames: [Pose: [Frame]]
@@ -140,7 +141,7 @@ final class Pet {
         statusSince = nil
         wanderTarget = nil
         goalS = nil
-        badge.contents = s == "blocked" ? Pet.blockedBadge : Pet.doneBadge
+        badge.contents = s == "blocked" ? Pet.blockedBadge : s == "asleep" ? Pet.asleepBadge : Pet.doneBadge
         return true
     }
 
@@ -175,7 +176,8 @@ final class Pet {
         badge.position = CGPoint(x: position.x + head.x, y: position.y + head.y)
         badge.zPosition = layer.zPosition + 2
         badge.setAffineTransform(CGAffineTransform(scaleX: 0.8, y: 0.8))
-        badge.isHidden = status != "blocked" && status != "done"   // Keep done's ✓ until the user checks the pane
+        badge.isHidden = !["blocked", "done", "asleep"].contains(status)   // Keep done's ✓ until the user checks the pane
+        sprite.opacity = status == "asleep" ? 0.4 : 1   // The sprite, so fade() keeps its own layer opacity
     }
 
     // Fades in, or fades out and then removes the layers. A fade-out starts from the current opacity, so it doesn't flash.
@@ -346,6 +348,7 @@ final class Pet {
 
     private static let blockedBadge = badgeImage("!", .systemOrange)
     private static let doneBadge = badgeImage("✓", .systemGreen)
+    private static let asleepBadge = badgeImage("z", .systemGray)
 
     // A 19 pt circle with a white mark, drawn at 2x.
     private static func badgeImage(_ mark: String, _ color: NSColor) -> CGImage {
