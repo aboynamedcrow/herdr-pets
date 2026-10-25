@@ -96,8 +96,15 @@ herdr plugin config-dir dev.minung.herdr-pets
 각 사용자 폴더에는 `pet.json`과 PNG 또는 WebP 시트가 필요합니다:
 
 ```json
-{"id":"sample","displayName":"Sample","spriteVersionNumber":2,"spritesheetPath":"spritesheet.webp"}
+{"id":"sample","displayName":"Sample","spriteVersionNumber":2,"spritesheetPath":"spritesheet.webp","customSizeShare":0.5}
 ```
+
+`customSizeShare`는 선택 사항입니다. 이 펫에 적용할 **커스텀 펫 크기** 증가분의 비율을 정합니다.
+기본값은 1입니다. 로더는 숫자를 0...1 범위로 제한합니다.
+숫자가 아닌 값은 1을 사용합니다. 펫은 계속 로드되며, 해당 파일의 경고는 한 번만 기록합니다.
+실제 비율은 `100 + (customPetSize - 100) * customSizeShare`입니다.
+예를 들어, 비율이 0.5인 `sample`은 설정이 130%일 때 115%, 200%일 때 150%를 사용합니다.
+비율이 0이면 펫은 100%를 유지합니다. 내장 펫은 이 키를 사용하지 않습니다.
 
 Codex v2 시트를 사용합니다. 크기는 1536 x 2288픽셀이며, 192 x 208픽셀 셀을 8열과 11행으로 배치합니다.
 쓰지 않는 셀은 투명하게 둡니다. 로더는 각 행의 프레임 한도 안에서 알파 채널로 프레임 수를 셉니다.
