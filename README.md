@@ -49,10 +49,10 @@ Machine IDs keep pets stable when labels change.
 If a machine poll fails, its pets stay for 60 seconds after the first failure.
 After that hold they fall asleep: they rest in place, dimmed, with a gray z badge.
 They wake when a poll succeeds. They leave when the machine is disabled or removed, or when the setting is off.
-So an agent that waits for you on an unreachable machine stays on screen.
+An agent that waits for you on an unreachable machine stays on screen while fewer than 20 agents are awake.
 Only Local failures count toward the app's automatic exit.
 Turn **Other machines** off for Local only. This stops new remote calls and removes remote pets.
-The app still shows up to 20 pets, with blocked agents first.
+The app still shows up to 20 pets: awake blocked agents first, then other awake agents, then asleep agents.
 
 ## Settings
 
