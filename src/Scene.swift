@@ -1,6 +1,6 @@
 import AppKit
 
-let maxPets = 20
+var maxPets: Int { min(60, max(10, preferences.maxPets)) }
 
 // Scene coordinates = the whole screen the overlay covers.
 final class PetScene {
@@ -9,23 +9,25 @@ final class PetScene {
     var area = CGRect.zero          // Crowd area
     var walls = CGRect.zero         // Screen below the menu bar and above the Dock
     var screenOrigin = CGPoint.zero // Converts the cursor to scene coordinates
+    private let roles: RolePets?
     private let root: CALayer
     private var timer: Timer?       // nil while every pet rests
     private var lastTime: Double?
 
-    init(root: CALayer) { self.root = root }
+    init(root: CALayer, roles: RolePets? = nil) { self.root = root; self.roles = roles }
 
     // If there are too many, show blocked first and asleep last.
-    // Pets that disappeared or whose character changed (agent kind or character option) leave and come back new.
+    // Art changes keep the same pet and its position.
     func apply(_ agents: [Agent]) {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         defer { CATransaction.commit() }
+        roles?.refresh()
         self.agents = agents
         let awake = agents.filter { !$0.asleep }
         let shown = (awake.filter { $0.agent_status == "blocked" } + awake.filter { $0.agent_status != "blocked" } + agents.filter(\.asleep)).prefix(maxPets)
         var changed = false
-        for (id, pet) in pets where !shown.contains(where: { $0.id == id && petKind(for: $0) == pet.kind }) {
+        for (id, pet) in pets where !shown.contains(where: { $0.id == id }) {
             changed = true
             pets[id] = nil
             pet.fade(out: true)
@@ -40,6 +42,8 @@ final class PetScene {
                 pets[agent.id] = pet
                 return pet
             }()
+            let character = roles?.character(for: agent, enabled: preferences.rolePets && !demo) ?? .builtin(petKind(for: agent))
+            if pet.setCharacter(character, frames: roles?.frames(for: character)) { changed = true }
             if pet.setStatus(agent.asleep ? "asleep" : agent.agent_status) { changed = true }
         }
         if changed && preferences.visible { update() }   // Show the new status in this same commit, not one tick later

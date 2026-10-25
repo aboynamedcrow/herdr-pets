@@ -38,21 +38,25 @@ The menu bar shows a pet icon. Click it to open the settings panel.
 | `done` | Celebrates and shows **✓** |
 | `idle`, `unknown` | Rests |
 
-herdr-pets reads only agent status from Herdr, and the pets never block clicks or take focus.
+herdr-pets reads agent status, pane labels, and working folders from Herdr.
+The pets never block clicks or take focus.
 
 ## Machines
 
 Pets show agents from Local and every enabled machine in Herdr's saved machine list.
 Local refreshes every 2 seconds. Other machines refresh every 6 seconds.
 The app reads the machine list at startup and every 60 seconds.
-Machine IDs keep pets stable when labels change.
+Machine IDs and terminal IDs keep each pet stable.
+A pane label or working folder change can select different art without moving the pet.
 If a machine poll fails, its pets stay for 60 seconds after the first failure.
 After that hold they fall asleep: they rest in place, dimmed, with a gray z badge.
 They wake when a poll succeeds. They leave when the machine is disabled or removed, or when the setting is off.
-Asleep pets use the slots left after all awake pets, up to 20 pets in all. So an agent that waits for you on an unreachable machine stays on screen while there are 20 agents or fewer in all.
+Asleep pets use the slots left after all awake pets, up to the **Max pets** setting.
+An agent on an unreachable machine stays on screen while the total count fits that limit.
 Only Local failures count toward the app's automatic exit.
 Turn **Other machines** off for Local only. This stops new remote calls and removes remote pets.
-The app still shows up to 20 pets: awake blocked agents first, then other awake agents, then asleep agents.
+The app shows awake blocked agents first, then other awake agents, then asleep agents.
+**Max pets** sets the limit from 10 to 60, with a default of 20.
 
 ## Settings
 
@@ -66,6 +70,8 @@ The settings panel, opened from the menu bar icon, shows the total number of age
 | **All 14** | Each agent gets one of the 14 characters |
 | **Show pets** | Show or hide the pets |
 | **Other machines** | Show agents from enabled saved machines. On by default |
+| **Role pets** | Apply rules from the pets folder. On by default |
+| **Max pets** | Show 10 to 60 pets. Default 20, in steps of 5 |
 | **Pet size** | Adjust pet size from 16–72 pt while **!** and **✓** stay the same size |
 | **Reduce motion** | Pets show status through poses without moving, and also follow the macOS Reduce Motion setting |
 | **Home area → Set…** | Move and resize the translucent window, then close it to save its position and size |
@@ -78,6 +84,48 @@ Settings are saved in the plugin config folder, which you can locate with this c
 ```sh
 herdr plugin config-dir dev.minung.herdr-pets
 ```
+
+## Role pets
+
+Keep custom art and `rules.json` in `$XDG_CONFIG_HOME/herdr/pets`, or `~/.config/herdr/pets` when XDG is unset.
+`HERDR_PETS_DIR` overrides that folder.
+Rules form an ordered JSON list. The first matching rule wins:
+
+```json
+[
+  {"role": ["researcher", "explorer"], "cwd": "~/projects/", "pet": "sample"},
+  {"role": "reviewer", "agent": "codex", "pet": "generic"}
+]
+```
+
+Each optional match field accepts a string or a list of strings.
+`role` matches the first word in a pane label without case. One leading marker emoji is allowed.
+`agent` matches the agent type exactly.
+`cwd` matches a path prefix on a folder boundary. A leading `~` expands to the local home.
+All fields in a rule must match.
+
+| `pet` value | Choice |
+| --- | --- |
+| `"agent"` | The current **By agent type** or **All 14** choice |
+| `"generic"` | One of the 12 generic characters, stable for each pet key |
+| A built-in name, such as `"cat"` | That built-in character |
+| A custom ID, such as `"sample"` | Art from the subfolder with that ID. Custom art takes priority over a built-in name |
+
+Each custom folder needs `pet.json` and a PNG or WebP sheet:
+
+```json
+{"id":"sample","displayName":"Sample","spriteVersionNumber":2,"spritesheetPath":"spritesheet.webp"}
+```
+
+Use a Codex v2 sheet: 1536 x 2288 pixels, with 8 columns and 11 rows of 192 x 208 cells.
+Leave unused cells transparent. The loader counts frames from their alpha channel within each row's frame limit.
+Working uses row 7, blocked uses row 6, celebrate uses row 4, and resting uses row 0.
+All frames share one crop box and scale with **Pet size**.
+
+**Role pets** is on by default. Turn it off to use the current character choices without rules.
+**Max pets** sets the pet limit from 10 to 60. It defaults to 20, with steps of 5.
+Missing or bad rules and art use the current choice. Each file logs an error only once.
+The app reads rules and art at startup. It checks for changed files at most every 60 seconds.
 
 ## Turn off or uninstall
 

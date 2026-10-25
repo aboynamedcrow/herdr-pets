@@ -25,7 +25,9 @@ var area = CGRect.zero   // Crowd area currently shown (screen coordinates). Sav
 let petView = NSView()
 petView.wantsLayer = true
 petView.autoresizingMask = [.width, .height]
-let scene = PetScene(root: petView.layer!)
+let rolePets = RolePets()
+rolePets.refresh()
+let scene = PetScene(root: petView.layer!, roles: rolePets)
 let overlay = makeOverlay(showing: petView)
 let areaEditor = AreaEditor()
 let controls = Controls()

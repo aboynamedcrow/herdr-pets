@@ -8,6 +8,7 @@ final class Controls: NSObject {
     private let characterNote = label("", size: 11, secondary: true)
     private let sizeLabel = label("", size: 12, secondary: true)
     private let screens = NSPopUpButton()
+    private let maxLabel = label("", size: 12, secondary: true)
     private var screenRows: [NSView] = []   // Monitor row and its separator. Shown only with two or more screens
     private var connected = true
 
@@ -55,6 +56,14 @@ final class Controls: NSObject {
         let machines = NSSwitch()
         machines.state = preferences.otherMachines ? .on : .off
         machines.target = self; machines.action = #selector(changeMachines(_:))
+        let roles = NSSwitch()
+        roles.state = preferences.rolePets ? .on : .off
+        roles.target = self; roles.action = #selector(changeRoles(_:))
+        let limit = NSStepper()
+        limit.minValue = 10; limit.maxValue = 60; limit.increment = 5
+        limit.integerValue = maxPets
+        limit.target = self; limit.action = #selector(changeMax(_:))
+        maxLabel.stringValue = "\(maxPets)"
         let still = NSSwitch()
         still.state = preferences.reducedMotion ? .on : .off
         still.target = self; still.action = #selector(changeMotion(_:))
@@ -66,6 +75,10 @@ final class Controls: NSObject {
         screenRows = [row(label(t("모니터", "Monitor"), size: 13), screens), separator()]
 
         let rows = stack([
+            row(label(t("역할별 펫", "Role pets"), size: 13), roles),
+            separator(),
+            row(label(t("최대 펫 수", "Max pets"), size: 13), row(maxLabel, limit)),
+            separator(),
             row(label(t("펫 표시", "Show pets"), size: 13), visible),
             separator(),
             row(label(t("다른 머신", "Other machines"), size: 13), machines),
@@ -164,6 +177,20 @@ final class Controls: NSObject {
         preferences.otherMachines = sender.state == .on
         preferences.save()
         poll()
+    }
+
+    @objc private func changeRoles(_ sender: NSSwitch) {
+        preferences.rolePets = sender.state == .on
+        preferences.save()
+        scene.apply(scene.agents)
+    }
+
+    @objc private func changeMax(_ sender: NSStepper) {
+        preferences.maxPets = sender.integerValue
+        maxLabel.stringValue = "\(maxPets)"
+        preferences.save()
+        scene.apply(scene.agents)
+        refresh(connected: connected)
     }
 
     @objc private func changeMotion(_ sender: NSSwitch) {

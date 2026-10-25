@@ -89,13 +89,14 @@ struct Perimeter {
 // blocked: startled hop, climbs the nearest screen edge, runs along it to near the cursor and waves.
 // asleep: its machine stopped answering. Rests in place, dimmed, with a z badge.
 final class Pet {
-    let kind: PetKind
+    private(set) var kind: PetKind
+    private(set) var character: PetCharacter
     let spot: CGPoint
     let layer = CALayer()         // Position, rotation, scale, and order among pets
     let badge = CALayer()         // !, ✓ or z. Added to the scene root above the pets, so another pet's body never covers it
     private let body = CALayer()  // Bounce and left/right facing
     private let sprite = CALayer()
-    private let frames: [Pose: [Frame]]
+    private var frames: [Pose: [Frame]]
     private let phase: Double     // Offsets each pet's motion rhythm
     private let walkSpeed = CGFloat.random(in: 48...66)
     private let blockSide = CGFloat.random(in: 26...44)   // Stops beside the cursor so it doesn't cover it
@@ -118,6 +119,7 @@ final class Pet {
 
     init(id: String, kind: PetKind, spot: CGPoint, in band: CGRect) {
         self.kind = kind
+        self.character = .builtin(kind)
         self.spot = spot
         frames = Sprites.frames(kind)
         phase = Double(id.unicodeScalars.reduce(0) { $0 + Int($1.value) } % 1600) / 100
@@ -131,6 +133,21 @@ final class Pet {
         badge.bounds.size = CGSize(width: 19, height: 19)
         show(.resting)
         render()
+    }
+
+    @discardableResult
+    func setCharacter(_ value: PetCharacter, frames custom: [Pose: [Frame]]? = nil) -> Bool {
+        guard value != character else { return false }
+        switch value {
+        case .builtin(let kind): self.kind = kind; frames = Sprites.frames(kind)
+        case .custom: guard let custom else { return false }; frames = custom
+        }
+        character = value
+        let filter: CALayerContentsFilter = value == .builtin(.pixel) || value == .builtin(.claude) ? .nearest : .linear
+        sprite.magnificationFilter = filter
+        sprite.minificationFilter = filter
+        show(standingPose)
+        return true
     }
 
     // Returns false if the status is unchanged.
