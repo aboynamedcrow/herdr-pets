@@ -24,6 +24,8 @@ final class PetScene {
         defer { CATransaction.commit() }
         roles?.refresh()
         self.agents = agents
+        let active = Set(agents.compactMap(\.sessionKey))
+        if let roles { roles.agentOverrides = roles.agentOverrides.filter { active.contains($0.key) } }
         let awake = agents.filter { !$0.asleep }
         let shown = (awake.filter { $0.agent_status == "blocked" } + awake.filter { $0.agent_status != "blocked" } + agents.filter(\.asleep)).prefix(maxPets)
         var changed = false

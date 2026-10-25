@@ -98,6 +98,7 @@ final class Pet {
     private let sprite = CALayer()
     private var frames: [Pose: [Frame]]
     private var customSize = 0
+    private var customSizeShares: [String: Double] = [:]
     var artSize: CGSize { sprite.bounds.size }
     private let phase: Double     // Offsets each pet's motion rhythm
     private let walkSpeed = CGFloat.random(in: 48...66)
@@ -139,13 +140,14 @@ final class Pet {
 
     @discardableResult
     func setCharacter(_ value: PetCharacter, frames custom: [Pose: [Frame]]? = nil) -> Bool {
-        guard value != character || (custom != nil && customSize != preferences.customPetSize) else { return false }
+        guard value != character || (custom != nil && (customSize != preferences.customPetSize || customSizeShares != preferences.customSizeShares)) else { return false }
         switch value {
         case .builtin(let kind): self.kind = kind; frames = Sprites.frames(kind)
         case .custom: guard let custom else { return false }; frames = custom
         }
         character = value
         customSize = preferences.customPetSize
+        customSizeShares = preferences.customSizeShares
         let filter: CALayerContentsFilter = value == .builtin(.pixel) || value == .builtin(.claude) ? .nearest : .linear
         sprite.magnificationFilter = filter
         sprite.minificationFilter = filter

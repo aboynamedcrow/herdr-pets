@@ -112,8 +112,8 @@ struct CustomPet {
         }
         frames = result
     }
-    func frames(sizePercent: Int) -> [Pose: [Frame]] {
-        let scale = CGFloat(100 + Double(min(200, max(100, sizePercent)) - 100) * customSizeShare) / 100
+    func frames(sizePercent: Int, share: Double? = nil) -> [Pose: [Frame]] {
+        let scale = CGFloat(100 + Double(min(200, max(100, sizePercent)) - 100) * min(1, max(0, share ?? customSizeShare))) / 100
         return frames.mapValues { $0.map { Frame(image: $0.image, size: CGSize(width: $0.size.width * scale, height: $0.size.height * scale), anchorX: $0.anchorX) } }
     }
 }
@@ -321,8 +321,10 @@ final class RolePets {
         return (NSImage(cgImage: frame.image, size: frame.size), pet.displayName)
     }
 
+    func sizeShare(_ id: String) -> Double { cache[id]?.pet?.customSizeShare ?? 1 }
+
     func frames(for character: PetCharacter, sizePercent: Int = preferences.customPetSize) -> [Pose: [Frame]]? {
         guard case .custom(let id, _) = character else { return nil }
-        return cache[id]?.pet?.frames(sizePercent: sizePercent)
+        return cache[id]?.pet?.frames(sizePercent: sizePercent, share: preferences.customSizeShares[id])
     }
 }

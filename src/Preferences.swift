@@ -46,12 +46,19 @@ enum CharacterMode: String, Codable, CaseIterable {
     }
 }
 
+enum MovementMode: String, Codable, CaseIterable {
+    case home, broadway
+    var title: String { self == .home ? "Home Area" : "Broadway Mode" }
+}
+
 struct Preferences: Codable {
     var size: Double = 24              // pt, sizeRange
     var visible = true
     var otherMachines = true
     var characterMode: CharacterMode = .custom
     var customPetSize = 130
+    var customSizeShares: [String: Double] = [:]
+    var movementMode: MovementMode = .home
     var maxPets = 20
     var reducedMotion = false
     var screenAreas: [String: ScreenArea] = [:]   // Crowd area per monitor, keyed by NSScreen.placementID
@@ -67,7 +74,7 @@ struct Preferences: Codable {
     init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case size, visible, otherMachines, characterMode, customPetSize, maxPets, reducedMotion, screenAreas, screenOrder, language
+        case size, visible, otherMachines, characterMode, customPetSize, customSizeShares, movementMode, maxPets, reducedMotion, screenAreas, screenOrder, language
     }
     private enum LegacyKeys: String, CodingKey { case rolePets, allCharacters }
 
@@ -86,6 +93,8 @@ struct Preferences: Codable {
             characterMode = roles ? .custom : all ? .random : .agent
         }
         customPetSize = min(200, max(100, try c.decodeIfPresent(Int.self, forKey: .customPetSize) ?? customPetSize))
+        customSizeShares = ((try? c.decode([String: Double].self, forKey: .customSizeShares)) ?? [:]).mapValues { $0.isFinite ? min(1, max(0, $0)) : 1 }
+        movementMode = (try? c.decode(MovementMode.self, forKey: .movementMode)) ?? .home
         maxPets = min(60, max(10, try c.decodeIfPresent(Int.self, forKey: .maxPets) ?? maxPets))
         reducedMotion = try c.decodeIfPresent(Bool.self, forKey: .reducedMotion) ?? reducedMotion
         screenAreas = try c.decodeIfPresent([String: ScreenArea].self, forKey: .screenAreas) ?? [:]

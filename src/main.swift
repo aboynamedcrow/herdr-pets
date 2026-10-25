@@ -31,6 +31,7 @@ let scene = PetScene(root: petView.layer!, roles: rolePets)
 let overlay = makeOverlay(showing: petView)
 let areaEditor = AreaEditor()
 let controls = Controls()
+let petStudio = PetStudio(roles: rolePets)
 
 restoreArea()
 NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { _ in
@@ -39,6 +40,16 @@ NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenPar
 }
 NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main) { _ in scene.wake() }   // macOS Reduce Motion
 controls.install()
+if let i = arguments.firstIndex(of: "--studio-preview"), i + 1 < arguments.count {
+    scene.apply(demoAgents())
+    petStudio.show()
+    DispatchQueue.main.async {
+        do { try petStudio.exportPreviews(to: URL(fileURLWithPath: arguments[i + 1])) }
+        catch { FileHandle.standardError.write(Data("Studio preview failed: \(error)\n".utf8)); exit(1) }
+        exit(0)
+    }
+}
+if arguments.contains("--studio") { petStudio.show() }
 
 let agentPoller = AgentPoller(launchedByPlugin: launchedByPlugin, readAgents: { machine, complete in
     DispatchQueue.global().async {

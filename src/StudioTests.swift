@@ -1,6 +1,24 @@
 import AppKit
 
 func studioSelfTest() {
+    var sizeSettings = Preferences()
+    sizeSettings.customPetSize = 150
+    sizeSettings.customSizeShares = ["sample": 0.5]
+    sizeSettings.movementMode = .broadway
+    let savedSize = try! JSONDecoder().decode(Preferences.self, from: JSONEncoder().encode(sizeSettings))
+    precondition(savedSize.customSizeShares["sample"] == 0.5 && savedSize.movementMode == .broadway)
+    let badSize = try! JSONDecoder().decode(Preferences.self, from: Data("{\"customSizeShares\":{\"a\":-2,\"b\":8}}".utf8))
+    precondition(badSize.customSizeShares == ["a": 0, "b": 1])
+    let synthetic = bitmap(width: 1536, height: 2288)
+    synthetic.setFillColor(NSColor.blue.cgColor)
+    for (row, count) in CustomPet.rowLimits.enumerated() {
+        for column in 0..<count { synthetic.fill(CGRect(x: column * 192 + 30, y: 2288 - row * 208 - 100, width: 40, height: 80)) }
+    }
+    let sample = try! CustomPet(sheet: synthetic.makeImage()!, customSizeShare: 0.25)
+    let base = sample.frames[.resting]![0].size.height
+    precondition(sample.frames(sizePercent: 150, share: 0.5)[.resting]![0].size.height == base * 1.25)
+    precondition(sample.frames(sizePercent: 150)[.resting]![0].size.height == base * 1.125)
+    print("PASS: Studio size overrides, metadata fallback, bounds, and movement persistence")
     let home = "/fake/home"
     let pane = Agent(terminal_id: "a", agent_status: "working", agent: "codex", label: "Reviewer 2", cwd: "/repo/app")
     var doc = AssignmentDocument()
