@@ -235,9 +235,52 @@ func rolePetsSelfTest() {
     writeRules("[{\"pet\":\"cat\"}]")
     now += 60; orchestration.refresh()
     precondition(orchestration.character(for: pane, mode: .custom) == .builtin(.claude))
+    catalogBoundarySelfTest(sheet)
     modesSelfTest(art)
     preferences = Preferences()
     print("PASS: role pets 10/10 cwd position and bad custom override fallback")
+}
+
+private func catalogBoundarySelfTest(_ sheet: CGImage) {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let pets = directory.appendingPathComponent("pets"), source = directory.appendingPathComponent("source")
+    try! FileManager.default.createDirectory(at: pets, withIntermediateDirectories: true)
+    try! FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    try! Data("{\"id\":\"sample\",\"displayName\":\"Linked sample\",\"spriteVersionNumber\":2,\"spritesheetPath\":\"sheet.png\"}".utf8)
+        .write(to: source.appendingPathComponent("pet.json"))
+    let sheetURL = source.appendingPathComponent("sheet.png"), link = pets.appendingPathComponent("sample")
+    let destination = CGImageDestinationCreateWithURL(sheetURL as CFURL, "public.png" as CFString, 1, nil)!
+    CGImageDestinationAddImage(destination, sheet, nil)
+    precondition(CGImageDestinationFinalize(destination))
+    try! FileManager.default.createSymbolicLink(at: link, withDestinationURL: source)
+    var now = 0.0
+    let catalog = RolePets(directory: pets, clock: { now }, log: { _ in })
+    catalog.refresh(mode: .village)
+    precondition(catalog.customIDs == ["sample"] && catalog.thumbnail("sample")?.title == "Linked sample")
+    precondition(catalog.possible(mode: .village, agents: []).custom == ["sample"])
+    let keys = (0..<100).map { Agent(terminal_id: "review-\($0)", agent_status: "idle", agent: "claude") }
+    let picks = keys.map { catalog.character(for: $0, mode: .village) }
+    precondition(picks.contains { if case .custom("sample", _) = $0 { return true }; return false })
+    precondition(picks.contains { if case .builtin = $0 { return true }; return false })
+    precondition(keys[2].id == "5:local:review-2" && picks[2] == .builtin(.claude))
+    let restarted = RolePets(directory: pets, clock: { now }, log: { _ in })
+    restarted.refresh(mode: .village)
+    precondition(restarted.customIDs == ["sample"] && restarted.thumbnail("sample") != nil)
+    for (pane, pick) in zip(keys, picks) { precondition(restarted.character(for: pane, mode: .village) == pick) }
+    try! FileManager.default.removeItem(at: sheetURL)
+    now += 60; restarted.refresh(mode: .village)
+    precondition(restarted.customIDs.isEmpty)
+    for (pane, pick) in zip(keys, picks) {
+        if case .builtin = pick { precondition(restarted.character(for: pane, mode: .village) == pick) }
+    }
+    try! FileManager.default.removeItem(at: link)
+    now += 60; catalog.refresh(mode: .village)
+    precondition(catalog.customIDs.isEmpty)
+    for (pane, pick) in zip(keys, picks) {
+        if case .builtin = pick { precondition(catalog.character(for: pane, mode: .village) == pick) }
+    }
+    print("PASS: symlink scan, gallery, Village, restart, last custom failure and removal preserve 100 keys' built-in winners")
 }
 
 private func modesSelfTest(_ art: CustomPet) {
@@ -257,7 +300,7 @@ private func modesSelfTest(_ art: CustomPet) {
             case .village: precondition(value == first.character(for: pane, mode: mode))
             }
         }
-        precondition(empty.character(for: pane, mode: .village) == empty.character(for: pane, mode: .random))
+        guard case .builtin = empty.character(for: pane, mode: .village) else { preconditionFailure() }
         precondition(empty.character(for: pane, mode: .custom) == first.character(for: pane, mode: .agent))
         let fallback = Agent(terminal_id: "fallback", agent_status: "idle", agent: type)
         precondition(first.character(for: fallback, mode: .custom) == .builtin(petKind(ofType: type)))
@@ -293,7 +336,18 @@ private func modesSelfTest(_ art: CustomPet) {
         precondition(value.customPetSize == expected)
     }
     precondition(Preferences().characterMode == .custom && Preferences().customPetSize == 130)
-    print("PASS: modes 2/4 legacy migration, new keys, size defaults and clamps")
+    let unknown = try! JSONDecoder().decode(Preferences.self, from: Data("""
+    {"characterMode":"future-mode","rolePets":false,"allCharacters":true,
+     "size":42,"customPetSize":170,"maxPets":60,"visible":false,"otherMachines":false,
+     "reducedMotion":true,"language":"ko","screenOrder":["screen"],
+     "screenAreas":{"screen":{"right":11,"bottom":12,"width":200,"height":50}}}
+    """.utf8))
+    precondition(unknown.characterMode == .custom && unknown.size == 42 && unknown.customPetSize == 170 && unknown.maxPets == 60)
+    precondition(!unknown.visible && !unknown.otherMachines && unknown.reducedMotion && unknown.language == "ko")
+    precondition(unknown.screenOrder == ["screen"] && unknown.screenAreas.count == 1)
+    let placement = unknown.screenAreas["screen"]!
+    precondition(placement.right == 11 && placement.bottom == 12 && placement.width == 200 && placement.height == 50)
+    print("PASS: modes 2/4 legacy migration, unknown mode preserves settings, new keys, size defaults and clamps")
 
     preferences.visible = false
     let scene = PetScene(root: CALayer(), roles: first)

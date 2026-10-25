@@ -9,6 +9,7 @@ final class Controls: NSObject {
     private let sizeLabel = label("", size: 12, secondary: true)
     private let screens = NSPopUpButton()
     private let customSizeLabel = label("", size: 12, secondary: true)
+    private let customSize = NSStepper()
     private let maxLabel = label("", size: 12, secondary: true)
     private var screenRows: [NSView] = []   // Monitor row and its separator. Shown only with two or more screens
     private var connected = true
@@ -56,7 +57,6 @@ final class Controls: NSObject {
         let machines = NSSwitch()
         machines.state = preferences.otherMachines ? .on : .off
         machines.target = self; machines.action = #selector(changeMachines(_:))
-        let customSize = NSStepper()
         customSize.minValue = 100; customSize.maxValue = 200; customSize.increment = 10
         customSize.integerValue = preferences.customPetSize
         customSize.target = self; customSize.action = #selector(changeCustomSize(_:))
@@ -130,6 +130,7 @@ final class Controls: NSObject {
     private func refreshGallery() {
         rolePets.refresh()
         characterNote.stringValue = preferences.characterMode.note
+        customSize.isEnabled = preferences.characterMode == .village || preferences.characterMode == .custom
         let possible = rolePets.possible(mode: preferences.characterMode, agents: scene.agents)
         var entries = PetKind.allCases.map { (Sprites.thumbnail($0), $0.title, possible.builtin.contains($0)) }
         entries += rolePets.customIDs.compactMap { id in

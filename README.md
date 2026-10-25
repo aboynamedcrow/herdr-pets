@@ -132,7 +132,7 @@ The loader decodes custom art once for 200% at the largest pet size on Retina sc
 It scores each candidate from the pet key and candidate ID.
 Adding or removing a candidate changes only panes whose winning candidate changes.
 A failed unrelated custom pet does not change another pick.
-With no valid custom art, **Village** equals **Random**.
+With no valid custom art, **Village** still scores the built-in candidates. Its picks can differ from **Random**.
 With no rules, **Custom** equals **By agent type**.
 The gallery shows built-in pets first, then custom pets, seven per row.
 It dims pets the mode cannot produce. Custom tooltips show `displayName`.
@@ -141,7 +141,7 @@ Old settings migrate to **Custom** when Role pets was on or absent.
 When Role pets was off, All 14 migrates to **Random**. The other choice migrates to **By agent type**.
 **Max pets** sets the pet limit from 10 to 60. It defaults to 20, with steps of 5.
 Missing or bad rules and art use **By agent type** in **Custom** mode. Each file logs an error only once.
-The app reads rules and art at startup. It checks for changed files at most every 60 seconds.
+The app reads art at startup. Only **Custom** mode reads rules. It checks for changed files at most every 60 seconds.
 
 ## Turn off or uninstall
 

@@ -77,8 +77,8 @@ struct Preferences: Codable {
         size = try c.decodeIfPresent(Double.self, forKey: .size) ?? size
         visible = try c.decodeIfPresent(Bool.self, forKey: .visible) ?? visible
         otherMachines = try c.decodeIfPresent(Bool.self, forKey: .otherMachines) ?? otherMachines
-        if let mode = try c.decodeIfPresent(CharacterMode.self, forKey: .characterMode) {
-            characterMode = mode
+        if c.contains(.characterMode) {
+            characterMode = (try? c.decode(CharacterMode.self, forKey: .characterMode)) ?? .custom
         } else {
             let old = try decoder.container(keyedBy: LegacyKeys.self)
             let roles = try old.decodeIfPresent(Bool.self, forKey: .rolePets) ?? true

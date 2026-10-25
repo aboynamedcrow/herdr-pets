@@ -183,7 +183,7 @@ final class RolePets {
         guard now >= nextRead else { return }
         nextRead = now + 60
         let folders = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
-        let discovered = folders.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }.map(\.lastPathComponent)
+        let discovered = folders.filter { (try? $0.resolvingSymlinksInPath().resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }.map(\.lastPathComponent)
         let ids = Set(rules.map(\.pet)).subtracting(["agent", "generic"]).union(discovered)
         cache = cache.filter { ids.contains($0.key) }
         for id in ids.sorted() {
@@ -238,7 +238,6 @@ final class RolePets {
         case .agent: return .builtin(fallback)
         case .random: return .builtin(pick(PetKind.allCases, by: pane.id))
         case .village:
-            guard !customIDs.isEmpty else { return character(for: pane, mode: .random) }
             // Rendezvous scores isolate each candidate. Only a new winner changes a pick.
             let candidates = PetKind.allCases.map { "builtin:" + $0.rawValue } + customIDs.map { "custom:" + $0 }
             let winner = candidates.max { score($0, key: pane.id) < score($1, key: pane.id) }!
