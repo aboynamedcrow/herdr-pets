@@ -100,7 +100,7 @@ struct CustomPet {
         let scale = min(baseSize / bounds.height, 60 / bounds.width)
         let size = CGSize(width: bounds.width * scale, height: bounds.height * scale)
         var result: [Pose: [Frame]] = [:]
-        for (pose, row) in [(Pose.working, 7), (.blocked, 6), (.celebrate, 4), (.resting, 0)] {
+        for (pose, row) in [(Pose.working, 7), (.blocked, 6), (.celebrate, 4), (.resting, 0), (.walkingRight, 1), (.walkingLeft, 2), (.jump, 3), (.thinking, 5), (.sleeping, 8)] where !cells[row].isEmpty {
             result[pose] = try cells[row].map { cell in
                 guard let image = sheet.cropping(to: bounds.offsetBy(dx: cell.minX, dy: cell.minY)) else { throw PetLoadError.invalidSheet }
                 // Decode once for 200%, 72 pt, Retina 2x.
@@ -112,8 +112,8 @@ struct CustomPet {
         }
         frames = result
     }
-    func frames(sizePercent: Int) -> [Pose: [Frame]] {
-        let scale = CGFloat(100 + Double(min(200, max(100, sizePercent)) - 100) * customSizeShare) / 100
+    func frames(sizePercent: Int, share: Double? = nil) -> [Pose: [Frame]] {
+        let scale = CGFloat(100 + Double(min(200, max(100, sizePercent)) - 100) * min(1, max(0, share ?? customSizeShare))) / 100
         return frames.mapValues { $0.map { Frame(image: $0.image, size: CGSize(width: $0.size.width * scale, height: $0.size.height * scale), anchorX: $0.anchorX) } }
     }
 }
@@ -170,6 +170,9 @@ final class RolePets {
     private var nextRulesRead = -Double.infinity
     private var rulesStamp: Stamp?
     private var rules: [PetRule] = []
+    var legacyRules: [PetRule] { rules }
+    let assignments: AssignmentStore
+    var agentOverrides: [String: String] = [:]
     private var cache: [String: Cached] = [:]
     private var logged: Set<String> = []
     private var revision = 0
@@ -178,6 +181,7 @@ final class RolePets {
          clock: @escaping () -> Double = { ProcessInfo.processInfo.systemUptime },
          log: @escaping (String) -> Void = { FileHandle.standardError.write(Data("herdr-pets: \($0)\n".utf8)) }) {
         self.directory = directory; self.home = home; self.clock = clock; self.log = log
+        assignments = AssignmentStore(file: directory.appendingPathComponent("assignments.json"))
     }
 
     private func problem(_ url: URL) {
@@ -186,6 +190,7 @@ final class RolePets {
 
     func refresh(mode: CharacterMode = preferences.characterMode) {
         let now = clock()
+        assignments.load()
         let url = directory.appendingPathComponent("rules.json")
         if mode == .custom && now >= nextRulesRead {
             nextRulesRead = now + 60
@@ -249,6 +254,8 @@ final class RolePets {
         }
     }
 
+    func reload() { nextRead = -.infinity; nextRulesRead = -.infinity; refresh() }
+
     var customIDs: [String] { cache.keys.filter { cache[$0]?.pet != nil }.sorted() }
 
     func character(for pane: Agent, mode: CharacterMode) -> PetCharacter {
@@ -266,12 +273,23 @@ final class RolePets {
             }
             return .builtin(PetKind(rawValue: String(winner.dropFirst(8)))!)
         case .custom:
+            if let key = pane.sessionKey, let pet = agentOverrides[key] { return resolve(pet, for: pane) }
+            if let cell = AssignmentStore.winner(for: pane, document: assignments.document, home: home) { return resolve(cell.pet, for: pane) }
             return chooseCharacter(pane, rules: rules, home: home, fallback: fallback) { id in
                 guard let cached = self.cache[id] else { return nil }
                 if cached.pet != nil { return .custom(id, cached.revision) }
                 return cached.folder.date != nil ? .builtin(fallback) : nil
             }
         }
+    }
+
+    func resolve(_ token: String, for pane: Agent) -> PetCharacter {
+        let fallback = petKind(ofType: pane.agent)
+        if token.hasPrefix("builtin:") { return .builtin(PetKind(rawValue: String(token.dropFirst(8))) ?? fallback) }
+        let id = token.hasPrefix("custom:") ? String(token.dropFirst(7)) : token
+        if let cached = cache[id], cached.pet != nil { return .custom(id, cached.revision) }
+        if token == "generic" { return .builtin(pick(PetKind.generic, by: pane.id)) }
+        return .builtin(token == "agent" ? fallback : PetKind(rawValue: token) ?? fallback)
     }
 
     private func score(_ id: String, key: String) -> UInt64 {
@@ -294,6 +312,13 @@ final class RolePets {
                 else if cache[rule.pet]?.pet != nil { custom.insert(rule.pet) }
                 else if cache[rule.pet]?.folder.date == nil, let kind = PetKind(rawValue: rule.pet) { builtin.insert(kind) }
             }
+            for token in assignments.document.cells.map(\.pet) + Array(agentOverrides.values) {
+                if token == "generic" { builtin.formUnion(PetKind.generic); continue }
+                if token.hasPrefix("builtin:"), let kind = PetKind(rawValue: String(token.dropFirst(8))) { builtin.insert(kind); continue }
+                let id = token.hasPrefix("custom:") ? String(token.dropFirst(7)) : token
+                if cache[id]?.pet != nil { custom.insert(id) }
+                else if let kind = PetKind(rawValue: id) { builtin.insert(kind) }
+            }
             return (builtin, custom)
         }
     }
@@ -303,8 +328,10 @@ final class RolePets {
         return (NSImage(cgImage: frame.image, size: frame.size), pet.displayName)
     }
 
+    func sizeShare(_ id: String) -> Double { cache[id]?.pet?.customSizeShare ?? 1 }
+
     func frames(for character: PetCharacter, sizePercent: Int = preferences.customPetSize) -> [Pose: [Frame]]? {
         guard case .custom(let id, _) = character else { return nil }
-        return cache[id]?.pet?.frames(sizePercent: sizePercent)
+        return cache[id]?.pet?.frames(sizePercent: sizePercent, share: preferences.customSizeShares[id])
     }
 }

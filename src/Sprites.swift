@@ -52,7 +52,7 @@ func pick<T>(_ items: [T], by key: String) -> T {
 }
 
 enum Pose: String, CaseIterable {
-    case working, blocked, celebrate, resting
+    case working, blocked, celebrate, resting, walkingRight, walkingLeft, jump, thinking, sleeping
     var frameCount: Int { self == .blocked || self == .resting ? 2 : 4 }   // Frame count in animation files
 }
 
@@ -65,16 +65,17 @@ struct Frame {
 // Character art. assets/sheets/<kind>.png has 4 poses side by side;
 // if assets/frames/<kind>-<pose>.png exists, that pose becomes a multi-frame animation.
 enum Sprites {
+    static let builtinPoses: [Pose] = [.working, .blocked, .celebrate, .resting]
     private static var cache: [PetKind: [Pose: [Frame]]] = [:]
 
     static func frames(_ kind: PetKind) -> [Pose: [Frame]] {
         if let cached = cache[kind] { return cached }
-        let sheet = slice("sheets/\(kind.rawValue)", into: Pose.allCases.count)
-        guard sheet.count == Pose.allCases.count else { fatalError("캐릭터 이미지를 읽을 수 없습니다: assets/sheets/\(kind.rawValue).png") }
+        let sheet = slice("sheets/\(kind.rawValue)", into: builtinPoses.count)
+        guard sheet.count == builtinPoses.count else { fatalError("캐릭터 이미지를 읽을 수 없습니다: assets/sheets/\(kind.rawValue).png") }
         // All four poses share one scale so a lying pose doesn't suddenly grow.
         let scale = min(baseSize / CGFloat(sheet.map(\.image.height).max()!), 60 / CGFloat(sheet.map(\.image.width).max()!))
         var result: [Pose: [Frame]] = [:]
-        for (pose, still) in zip(Pose.allCases, sheet) {
+        for (pose, still) in zip(builtinPoses, sheet) {
             let strip = slice("frames/\(kind.rawValue)-\(pose.rawValue)", into: pose.frameCount)
             if strip.isEmpty {
                 result[pose] = [frame(still, scale: scale)]

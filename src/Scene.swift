@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 
 var maxPets: Int { min(60, max(10, preferences.maxPets)) }
 
@@ -13,6 +14,12 @@ final class PetScene {
     private let root: CALayer
     private var timer: Timer?       // nil while every pet rests
     private var lastTime: Double?
+    private var bubbleManager: SpeechBubbles?
+    private var blockedTexts: [String: String] = [:]
+    private lazy var blockedReader = BlockedTextPoller { [weak self] texts in
+        self?.blockedTexts = texts
+        self?.syncBubbles()
+    }
 
     init(root: CALayer, roles: RolePets? = nil) { self.root = root; self.roles = roles }
 
@@ -24,6 +31,8 @@ final class PetScene {
         defer { CATransaction.commit() }
         roles?.refresh()
         self.agents = agents
+        let active = Set(agents.compactMap(\.sessionKey))
+        if let roles { roles.agentOverrides = roles.agentOverrides.filter { active.contains($0.key) } }
         let awake = agents.filter { !$0.asleep }
         let shown = (awake.filter { $0.agent_status == "blocked" } + awake.filter { $0.agent_status != "blocked" } + agents.filter(\.asleep)).prefix(maxPets)
         var changed = false
@@ -32,8 +41,8 @@ final class PetScene {
             pets[id] = nil
             pet.fade(out: true)
         }
-        let band = crowdBand(area, scale: petScale)
-        for agent in shown {
+        let band = preferences.movementMode == .broadway ? broadwayBand(walls, scale: petScale) : crowdBand(area, scale: petScale)
+        for (index, agent) in shown.enumerated() {
             let pet = pets[agent.id] ?? {
                 let pet = Pet(id: agent.id, kind: petKind(for: agent), spot: freeSpot(in: band), in: band)
                 root.addSublayer(pet.layer)
@@ -43,9 +52,17 @@ final class PetScene {
                 return pet
             }()
             let character = roles?.character(for: agent, mode: demo ? .agent : preferences.characterMode) ?? .builtin(petKind(for: agent))
-            if pet.setCharacter(character, frames: roles?.frames(for: character)) { changed = true }
+            let displayed: PetCharacter
+            if demo && arguments.contains("--custom-demo"), let roles, !roles.customIDs.isEmpty { displayed = roles.resolve("custom:" + roles.customIDs[index % roles.customIDs.count], for: agent) }
+            else { displayed = character }
+            if pet.setCharacter(displayed, frames: roles?.frames(for: displayed)) { changed = true }
             if pet.setStatus(agent.asleep ? "asleep" : agent.agent_status) { changed = true }
         }
+        let eligible = preferences.visible && preferences.movementMode == .broadway
+        if demo {
+            blockedTexts = Dictionary(uniqueKeysWithValues: agents.filter { $0.agent_status == "blocked" }.map { ($0.id, "Preview question: Should I apply these changes?\n1. Apply\n2. Keep the current version") })
+        } else { blockedReader.update(eligible ? agents.filter { pets[$0.id] != nil } : []) }
+        syncBubbles()
         if changed && preferences.visible { update() }   // Show the new status in this same commit, not one tick later
     }
 
@@ -86,11 +103,14 @@ final class PetScene {
         let dt = CGFloat(min(t - (lastTime ?? t), 0.1))
         lastTime = t
         let mouse = NSEvent.mouseLocation
-        let world = World(band: crowdBand(area, scale: petScale),
+        if let screen = screenContaining(CGPoint(x: screenOrigin.x + walls.midX, y: screenOrigin.y + walls.midY)) {
+            walls = screen.visibleFrame.offsetBy(dx: -screenOrigin.x, dy: -screenOrigin.y)
+        }
+        let world = World(band: preferences.movementMode == .broadway ? broadwayBand(walls, scale: petScale) : crowdBand(area, scale: petScale),
                           path: Perimeter(r: walls.insetBy(dx: footOffset * petScale + 2, dy: footOffset * petScale + 2)),
                           cursor: CGPoint(x: mouse.x - screenOrigin.x, y: mouse.y - screenOrigin.y),
                           scale: petScale,
-                          still: motionReduced)
+                          still: motionReduced, broadway: preferences.movementMode == .broadway, usableBounds: walls)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         var moving = false
@@ -98,8 +118,38 @@ final class PetScene {
             if pet.step(t: t, dt: dt, world: world) { moving = true }
         }
         CATransaction.commit()
+        syncBubbles()
         if !moving { stop(); return }   // Fades run in the render server and finish without the timer
         let fps: Double = pets.values.contains { $0.isDashing } ? 30 : 15
         if timer?.timeInterval != 1 / fps { schedule(fps: fps) }
     }
+    private func syncBubbles() {
+        guard preferences.visible && preferences.movementMode == .broadway else { bubbleManager?.hideAll(); return }
+        if bubbleManager == nil { bubbleManager = SpeechBubbles() }
+        bubbleManager?.update(agents: agents, pets: pets, texts: blockedTexts, origin: screenOrigin, screen: walls.offsetBy(dx: screenOrigin.x, dy: screenOrigin.y))
+    }
+
+    func exportPreview(to directory: URL) throws {
+        guard !pets.isEmpty else { throw CocoaError(.coderValueNotFound) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        stop()
+        let world = World(band: broadwayBand(walls, scale: petScale), path: Perimeter(r: walls.insetBy(dx: footOffset * petScale + 2, dy: footOffset * petScale + 2)),
+                          cursor: CGPoint(x: walls.midX, y: walls.midY), scale: petScale,
+                          still: motionReduced, broadway: true, usableBounds: walls)
+        let time = ProcessInfo.processInfo.systemUptime
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        for index in 0..<180 { for pet in pets.values { _ = pet.step(t: time + Double(index) / 30, dt: 1 / 30, world: world) } }
+        CATransaction.commit()
+        syncBubbles()
+        let context = bitmap(width: max(1, Int(root.bounds.width)), height: max(1, Int(root.bounds.height)))
+        context.setFillColor(CGColor(red: 0.12, green: 0.12, blue: 0.14, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: context.width, height: context.height))
+        root.render(in: context)
+        let url = directory.appendingPathComponent("broadway.png")
+        if let image = context.makeImage(), let destination = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil) {
+            CGImageDestinationAddImage(destination, image, nil); CGImageDestinationFinalize(destination)
+        }
+        try bubbleManager?.exportPreviews(to: directory)
+    }
+
 }

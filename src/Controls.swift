@@ -35,6 +35,7 @@ final class Controls: NSObject {
             stack([label("herdr-pets", size: 17, weight: .semibold), label(t("기다리는 에이전트가 달려와요", "Blocked agents' pets come to you"), size: 12, secondary: true), statusLabel], spacing: 4),
             section(t("캐릭터", "Characters"), [characters, characterNote, gallery]),
             section(t("화면", "Display"), [displayCard()]),
+            NSButton(title: "Open Pet Studio…", target: self, action: #selector(openStudio)),
             separator(),
             row(NSView(), quit),
         ], spacing: 16)
@@ -104,7 +105,7 @@ final class Controls: NSObject {
 
     func show() {
         guard let button = item.button else { return }
-        refreshGallery()   // Agents of a new kind may have appeared meanwhile
+        build()   // Studio may have changed these settings.
         refreshScreens()   // Monitors may have been plugged in or out
         popover.contentSize = popover.contentViewController!.view.fittingSize
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
@@ -176,6 +177,7 @@ final class Controls: NSObject {
     @objc private func changeVisible(_ sender: NSSwitch) {
         preferences.visible = sender.state == .on
         preferences.save()
+        scene.apply(scene.agents)
         if preferences.visible { overlay.orderFrontRegardless(); scene.wake() } else { overlay.orderOut(nil); scene.stop() }
     }
 
@@ -223,6 +225,8 @@ final class Controls: NSObject {
         guard NSScreen.screens.indices.contains(sender.indexOfSelectedItem) else { return }
         moveArea(to: NSScreen.screens[sender.indexOfSelectedItem])
     }
+
+    @objc private func openStudio() { popover.performClose(nil); petStudio.show() }
 
     @objc private func editArea() {
         popover.performClose(nil)
