@@ -47,7 +47,9 @@ Local refreshes every 2 seconds. Other machines refresh every 6 seconds.
 The app reads the machine list at startup and every 60 seconds.
 Machine IDs keep pets stable when labels change.
 If a machine poll fails, its pets stay for 60 seconds after the first failure.
-They disappear after that hold and return when a poll succeeds.
+After that hold they fall asleep: they rest in place, dimmed, with a gray z badge.
+They wake when a poll succeeds. They leave when the machine is disabled or removed, or when the setting is off.
+So an agent that waits for you on an unreachable machine stays on screen.
 Only Local failures count toward the app's automatic exit.
 Turn **Other machines** off for Local only. This stops new remote calls and removes remote pets.
 The app still shows up to 20 pets, with blocked agents first.

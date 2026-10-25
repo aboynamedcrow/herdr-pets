@@ -232,15 +232,43 @@ private func machineSelfTest() {
     hold.tick(59.9)
     hold.reply("mac-a", nil)
     precondition(hold.agents.count == 2 && hold.connected && !hold.shouldExit)
+    precondition(!hold.agents.contains(where: \.asleep))
     hold.tick(0.1)
-    precondition(hold.agents.map(\.machine) == ["local"])
+    precondition(hold.agents.map(\.machine) == ["local", "mac-a"] && hold.agents.map(\.asleep) == [false, true])
+    for _ in 0..<100 {   // Asleep pets stay while the machine keeps failing.
+        hold.tick(6)
+        hold.reply("mac-a", nil)
+    }
+    precondition(hold.agents.map(\.asleep) == [false, true] && hold.agents[1].id == before.id)
     hold.tick(6)
     hold.reply("mac-a", [agent])
-    precondition(hold.agents.count == 2 && hold.agents[1].id == before.id)
+    precondition(hold.agents.count == 2 && hold.agents[1].id == before.id && !hold.agents[1].asleep)
     hold.tick(6)
     hold.reply("mac-a", [])
     precondition(hold.agents.count == 1)   // An empty success removes old pets at once.
-    print("PASS: machines 4/8 60-second hold, expiry, recovery, empty success")
+    let asleep = PollerFixture()   // Disabling an asleep machine removes its pets.
+    asleep.tick()
+    asleep.reply("local", [])
+    asleep.machines([profiles[0]])
+    asleep.reply("mac-a", [agent])
+    asleep.tick(6)
+    asleep.reply("mac-a", nil)
+    asleep.tick(60)
+    precondition(asleep.agents.map(\.asleep) == [true])
+    asleep.machines([Machine(id: "mac-a", enabled: false)])
+    precondition(asleep.agents.isEmpty)
+    let scene = PetScene(root: CALayer())
+    let live = (0..<maxPets).map { Agent(terminal_id: "live-\($0)", agent_status: "idle") }
+    var sleeper = Agent(terminal_id: "blocked", agent_status: "blocked", machine: "mac-a")
+    sleeper.asleep = true
+    scene.apply([sleeper] + live)
+    precondition(scene.pets[sleeper.id] == nil && scene.pets.count == maxPets)   // Asleep pets go last when the screen is full.
+    scene.apply([sleeper])
+    precondition(scene.pets[sleeper.id]?.status == "asleep")
+    sleeper.asleep = false
+    scene.apply([sleeper])
+    precondition(scene.pets[sleeper.id]?.status == "blocked")
+    print("PASS: machines 4/8 60-second hold, sleep, recovery, empty success, disabled while asleep")
 
     // Off starts no discovery or remote call, even after an old reply arrives.
     let toggle = PollerFixture()

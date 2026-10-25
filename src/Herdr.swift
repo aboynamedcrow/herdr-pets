@@ -10,6 +10,7 @@ struct Agent: Decodable {
     let agent_status: String   // idle, working, blocked, done, unknown
     var agent: String? = nil   // claude, codex …
     var machine = "local"
+    var asleep = false         // Its machine stopped answering. The pet stays, dimmed, until the machine answers or leaves the list
 
     // The length keeps separators inside either ID from causing a collision.
     var id: String { "\(machine.utf8.count):\(machine):\(terminal_id)" }
@@ -172,8 +173,12 @@ final class AgentPoller {
         let now = clock()
         let agents = local + remotes.keys.sorted().flatMap { id -> [Agent] in
             let remote = remotes[id]!
-            if let failed = remote.failedSince, now - failed >= machineHoldInterval { return [] }
-            return remote.agents
+            guard let failed = remote.failedSince, now - failed >= machineHoldInterval else { return remote.agents }
+            return remote.agents.map { agent in
+                var agent = agent
+                agent.asleep = true
+                return agent
+            }
         }
         onUpdate(agents, localConnected, launchedByPlugin && localFailures >= 15)
     }

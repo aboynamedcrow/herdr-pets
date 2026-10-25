@@ -15,14 +15,15 @@ final class PetScene {
 
     init(root: CALayer) { self.root = root }
 
-    // If there are too many, show blocked first.
+    // If there are too many, show blocked first and asleep last.
     // Pets that disappeared or whose character changed (agent kind or character option) leave and come back new.
     func apply(_ agents: [Agent]) {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         defer { CATransaction.commit() }
         self.agents = agents
-        let shown = (agents.filter { $0.agent_status == "blocked" } + agents.filter { $0.agent_status != "blocked" }).prefix(maxPets)
+        let awake = agents.filter { !$0.asleep }
+        let shown = (awake.filter { $0.agent_status == "blocked" } + awake.filter { $0.agent_status != "blocked" } + agents.filter(\.asleep)).prefix(maxPets)
         var changed = false
         for (id, pet) in pets where !shown.contains(where: { $0.id == id && petKind(for: $0) == pet.kind }) {
             changed = true
@@ -39,7 +40,7 @@ final class PetScene {
                 pets[agent.id] = pet
                 return pet
             }()
-            if pet.setStatus(agent.agent_status) { changed = true }
+            if pet.setStatus(agent.asleep ? "asleep" : agent.agent_status) { changed = true }
         }
         if changed && preferences.visible { update() }   // Show the new status in this same commit, not one tick later
     }
