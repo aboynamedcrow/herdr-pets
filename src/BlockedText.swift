@@ -124,7 +124,10 @@ final class BlockedTextPoller {
             reader(entry.agent) { [weak self] text in
                 guard let self else { return }
                 self.requests[request] = nil
-                if self.entries[id]?.generation == generation { self.entries[id]?.text = text }
+                if self.entries[id]?.generation == generation {
+                    self.entries[id]?.text = text
+                    self.entries[id]?.nextRead = self.clock() + 2
+                }
                 self.publish(); self.pump()
             }
         }

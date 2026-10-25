@@ -163,6 +163,7 @@ func studioSelfTest() {
     precondition(roles.character(for: pane, mode: .custom) == .builtin(.cat))
     precondition(roles.resolve("builtin:robot", for: pane) == .builtin(.robot))
     print("PASS: Studio legacy fallback and explicit built-in selection")
+    reviewRegressionSelfTest(sample)
 }
 
 private func blockedTextSelfTest() {
@@ -210,4 +211,57 @@ private func blockedTextSelfTest() {
     callbacks.removeFirst().1("NEW SCREEN")
     precondition(text[a.id] == "NEW SCREEN")
     print("PASS: Blocked text rejects old sessions, screen revisions, disappeared panes, changed status, and cross-machine collisions")
+}
+
+private func reviewRegressionSelfTest(_ sample: CustomPet) {
+    var failures: [String] = []
+    let screen = CGRect(x: 0, y: 0, width: 500, height: 700)
+    for (index, band) in [CGRect(x: 50, y: 300, width: 100, height: 30), CGRect(x: 20, y: 20, width: 40, height: 12), CGRect(x: 20, y: 620, width: 40, height: 12)].enumerated() {
+        let pet = Pet(id: "entry-\(index)", kind: .codex, spot: CGPoint(x: 0.5, y: 0.5), in: band)
+        pet.setCharacter(.custom("large-entry", 1), frames: sample.frames(sizePercent: 200, share: 1))
+        pet.setStatus("blocked")
+        let world = World(band: band, path: Perimeter(r: screen.insetBy(dx: 29, dy: 29)), cursor: CGPoint(x: 0, y: 350), scale: 1.5, still: false, usableBounds: screen)
+        for tick in 0..<500 { _ = pet.step(t: Double(tick) / 30, dt: 1 / 30, world: world) }
+        if pet.isDashing || abs(pet.zRotation + .pi / 2) > 0.01 { failures.append("Large custom pet cannot enter the left edge from home case \(index).") }
+    }
+    let narrow = CGRect(x: 470, y: 200, width: 20, height: 10)
+    let idle = Pet(id: "narrow-home", kind: .codex, spot: CGPoint(x: 0.5, y: 0.5), in: narrow)
+    idle.setCharacter(.custom("large-home", 1), frames: sample.frames(sizePercent: 200, share: 1))
+    idle.setStatus("idle")
+    let narrowWorld = World(band: narrow, path: Perimeter(r: screen.insetBy(dx: 29, dy: 29)), cursor: .zero, scale: 1.5, still: false, usableBounds: screen)
+    var idleMoves = false
+    for tick in 0..<500 { idleMoves = idle.step(t: Double(tick) / 30, dt: 1 / 30, world: narrowWorld) }
+    if idleMoves { failures.append("A large idle pet never settles in a narrow home near the screen edge.") }
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try! FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let url = directory.appendingPathComponent("assignments.json")
+    let store = AssignmentStore(file: url)
+    var original = AssignmentDocument()
+    original.cells = [GridAssignment(repository: "", role: "", agentType: "", pet: "builtin:cat")]
+    try! store.save(original, expected: nil)
+    var next = original; next.cells[0].pet = "builtin:robot"
+    try! store.save(next, expected: store.snapshot)
+    try! Data("broken".utf8).write(to: url)
+    let restarted = AssignmentStore(file: url)
+    if restarted.load() != original { failures.append("A restart did not recover the valid backup.") }
+    next.cells[0].pet = "builtin:seed"
+    try! restarted.save(next, expected: restarted.snapshot)
+    let backup = try? JSONDecoder().decode(AssignmentDocument.self, from: Data(contentsOf: url.appendingPathExtension("bak")))
+    if backup != original { failures.append("Repair after restart replaced the valid backup.") }
+
+    var clock = 0.0
+    var requests: [(Agent, (String?) -> Void)] = []
+    let queue = BlockedTextPoller(clock: { clock }, reader: { requests.append(($0, $1)) }, onChange: { _ in })
+    let agents = ["A", "B", "C"].map { Agent(terminal_id: $0, agent_status: "blocked", agent: "codex", pane_id: "w1:p" + $0, agent_session: AgentSession(value: $0, kind: "id")) }
+    queue.update(agents)
+    clock = 3
+    let complete = requests[0].1
+    complete(nil)
+    if requests.count != 3 || requests[2].0.terminal_id != "C" { failures.append("A slow read retried before the waiting third pane.") }
+    if !failures.isEmpty {
+        for message in failures { FileHandle.standardError.write(Data("FAIL: \(message)\n".utf8)) }
+        exit(1)
+    }
+    print("PASS: Large home pets reach edges, backup survives restart, and slow reads do not starve waiting panes")
 }

@@ -120,8 +120,10 @@ final class Pet {
     private var facing: CGFloat = 1   // -1 faces left
     private var statusSince: Double?
     private var runSpeed: CGFloat = 0
+    private var movementBounds: CGRect?
     private var wanderTarget: CGPoint?
     private var restUntil = 0.0
+    private var pendingEntryS: CGFloat?
     private var edgeS: CGFloat?   // Position on the edge path. nil when not on the edge
     private var goalS: CGFloat?
     private var lastBand: CGRect?
@@ -173,6 +175,7 @@ final class Pet {
         statusSince = nil
         wanderTarget = nil
         goalS = nil
+        pendingEntryS = nil
         badge.contents = s == "blocked" ? Pet.blockedBadge : s == "asleep" ? Pet.asleepBadge : Pet.doneBadge
         return true
     }
@@ -183,6 +186,7 @@ final class Pet {
         if statusSince == nil { statusSince = t }
         let age = t - statusSince!
         scale = w.scale
+        movementBounds = w.usableBounds
         bounce = 0
         isDashing = false
         if w.band != lastBand {
@@ -200,12 +204,17 @@ final class Pet {
             if edgeS != nil { return stepReturning(t: t, dt: dt, world: w) }
             return stepBroadway(t: t, age: age, dt: dt, world: w)
         }
-        if edgeS != nil || homing || !w.band.insetBy(dx: -2, dy: -2).contains(position) { return stepReturning(t: t, dt: dt, world: w) }
+        let home = point(spot, in: w.band)
+        let containedHome = movementBounds.map { containedAnchor(home, in: $0) } ?? home
+        let atHome = hypot(position.x - containedHome.x, position.y - containedHome.y) < 1.5
+        if edgeS != nil || homing || (!w.band.insetBy(dx: -2, dy: -2).contains(position) && !atHome) { return stepReturning(t: t, dt: dt, world: w) }
         return stepInCrowd(t: t, age: age, dt: dt, world: w)
     }
 
-    private func keepArt(in bounds: CGRect) {
-        guard bounds.width > 0 && bounds.height > 0 else { return }
+    private func keepArt(in bounds: CGRect) { position = containedAnchor(position, in: bounds) }
+
+    private func containedAnchor(_ proposed: CGPoint, in bounds: CGRect) -> CGPoint {
+        guard bounds.width > 0 && bounds.height > 0 else { return proposed }
         let art = frames.values.flatMap { $0 }
         let half = art.map { max($0.anchorX, 1 - $0.anchorX) * $0.size.width }.max() ?? baseSize / 2
         let height = art.map(\.size.height).max() ?? baseSize
@@ -214,8 +223,8 @@ final class Pet {
         var extent = box()
         let fit = min(1, bounds.width / max(1, extent.width), bounds.height / max(1, extent.height))
         if fit < 1 { scale *= fit; extent = box() }
-        position.x = min(max(position.x, bounds.minX - extent.minX), bounds.maxX - extent.maxX)
-        position.y = min(max(position.y, bounds.minY - extent.minY), bounds.maxY - extent.maxY)
+        return CGPoint(x: min(max(proposed.x, bounds.minX - extent.minX), bounds.maxX - extent.maxX),
+                       y: min(max(proposed.y, bounds.minY - extent.minY), bounds.maxY - extent.maxY))
     }
 
     // Writes the state to the layers. Call inside a transaction with actions disabled.
@@ -326,8 +335,12 @@ final class Pet {
         }
         isDashing = true
         if edgeS == nil {
-            let entry = w.path.nearest(position)
-            if runToward(w.path.point(entry), maxSpeed: dashSpeed, dt: dt) { edgeS = entry }
+            let entry = pendingEntryS ?? w.path.nearest(position)
+            pendingEntryS = entry
+            zRotation = w.path.angle(entry)
+            if let bounds = w.usableBounds { keepArt(in: bounds) }
+            let goal = w.usableBounds.map { containedAnchor(w.path.point(entry), in: $0) } ?? w.path.point(entry)
+            if runToward(goal, maxSpeed: dashSpeed, dt: dt) { edgeS = entry; pendingEntryS = nil }
         } else if runAlongEdge(to: goal, on: w.path, maxSpeed: dashSpeed, dt: dt) {
             isDashing = false
             showAttention(t + phase)
@@ -399,7 +412,8 @@ final class Pet {
         return min(remaining, runSpeed * dt)
     }
 
-    private func runToward(_ goal: CGPoint, maxSpeed: CGFloat, dt: CGFloat) -> Bool {
+    private func runToward(_ proposed: CGPoint, maxSpeed: CGFloat, dt: CGFloat) -> Bool {
+        let goal = movementBounds.map { containedAnchor(proposed, in: $0) } ?? proposed
         let dx = goal.x - position.x, dy = goal.y - position.y, d = hypot(dx, dy)
         if d < 1.5 { position = goal; runSpeed = 0; return true }
         let step = advance(remaining: d, maxSpeed: maxSpeed, dt: dt)
@@ -427,6 +441,7 @@ final class Pet {
     }
 
     private func leaveEdge() {
+        pendingEntryS = nil
         edgeS = nil
         zRotation = 0
     }

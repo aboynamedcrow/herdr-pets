@@ -34,21 +34,33 @@ final class AssignmentStore {
     private(set) var document = AssignmentDocument()
     private(set) var snapshot: Data?
     private(set) var lastError: String?
+    private var hasValidDocument = false
 
     init(file: URL) { self.file = file.resolvingSymlinksInPath() }
 
     @discardableResult
     func load() -> AssignmentDocument {
         let data = try? Data(contentsOf: file)
-        if data == snapshot { return document }
+        if data == snapshot && hasValidDocument { return document }
         snapshot = data
+        if data == nil && !hasValidDocument && !FileManager.default.fileExists(atPath: file.path) && !FileManager.default.fileExists(atPath: file.appendingPathExtension("bak").path) { return document }
         do {
             guard let data else { throw AssignmentError.invalid }
             let value = try JSONDecoder().decode(AssignmentDocument.self, from: data)
             try validate(value)
             document = value
+            hasValidDocument = true
             lastError = nil
-        } catch { lastError = error.localizedDescription }
+        } catch {
+            lastError = error.localizedDescription
+            if !hasValidDocument,
+               let bytes = try? Data(contentsOf: file.appendingPathExtension("bak")),
+               let backup = try? JSONDecoder().decode(AssignmentDocument.self, from: bytes),
+               (try? validate(backup)) != nil {
+                document = backup
+                hasValidDocument = true
+            }
+        }
         return document
     }
 
@@ -71,6 +83,7 @@ final class AssignmentStore {
         try bytes.write(to: file, options: .atomic)
         snapshot = bytes
         document = value
+        hasValidDocument = true
         lastError = nil
     }
 
