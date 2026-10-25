@@ -19,6 +19,22 @@ func studioSelfTest() {
     precondition(sample.frames(sizePercent: 150, share: 0.5)[.resting]![0].size.height == base * 1.25)
     precondition(sample.frames(sizePercent: 150)[.resting]![0].size.height == base * 1.125)
     print("PASS: Studio size overrides, metadata fallback, bounds, and movement persistence")
+    var attention = AttentionCycle(counts: [.resting: 6, .blocked: 6, .jump: 4, .thinking: 8, .working: 6, .sleeping: 6, .walkingLeft: 8, .walkingRight: 8, .celebrate: 5], seed: 7)
+    var seen: Set<Pose> = []
+    var previous: Pose?
+    for index in 0..<80 {
+        let sample = attention.sample(at: Double(index) * 0.25)
+        precondition(sample.pose != .walkingLeft && sample.pose != .walkingRight && sample.pose != .celebrate)
+        if sample.frame == 0 && previous != nil { precondition(sample.pose != previous) }
+        previous = sample.pose
+        seen.insert(sample.pose)
+    }
+    precondition(seen.count == 6)
+    var fallback = AttentionCycle(counts: [.blocked: 2], seed: 1)
+    precondition(fallback.sample(at: 0).pose == .blocked && fallback.sample(at: 4).frame == 0)
+    precondition(sample.frames[.walkingLeft]?.count == 8 && sample.frames[.jump]?.count == 4)
+    precondition(Sprites.frames(.codex).count == 4)
+    print("PASS: Stationary attention variety, complete loops, short-sheet fallback, and four built-in poses")
     let home = "/fake/home"
     let pane = Agent(terminal_id: "a", agent_status: "working", agent: "codex", label: "Reviewer 2", cwd: "/repo/app")
     var doc = AssignmentDocument()

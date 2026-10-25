@@ -100,7 +100,7 @@ struct CustomPet {
         let scale = min(baseSize / bounds.height, 60 / bounds.width)
         let size = CGSize(width: bounds.width * scale, height: bounds.height * scale)
         var result: [Pose: [Frame]] = [:]
-        for (pose, row) in [(Pose.working, 7), (.blocked, 6), (.celebrate, 4), (.resting, 0)] {
+        for (pose, row) in [(Pose.working, 7), (.blocked, 6), (.celebrate, 4), (.resting, 0), (.walkingRight, 1), (.walkingLeft, 2), (.jump, 3), (.thinking, 5), (.sleeping, 8)] where !cells[row].isEmpty {
             result[pose] = try cells[row].map { cell in
                 guard let image = sheet.cropping(to: bounds.offsetBy(dx: cell.minX, dy: cell.minY)) else { throw PetLoadError.invalidSheet }
                 // Decode once for 200%, 72 pt, Retina 2x.

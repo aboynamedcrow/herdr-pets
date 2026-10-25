@@ -100,6 +100,7 @@ final class Pet {
     private var customSize = 0
     private var customSizeShares: [String: Double] = [:]
     var artSize: CGSize { sprite.bounds.size }
+    private var attention = AttentionCycle(counts: [.blocked: 1], seed: 1)
     private let phase: Double     // Offsets each pet's motion rhythm
     private let walkSpeed = CGFloat.random(in: 48...66)
     private let blockSide = CGFloat.random(in: 26...44)   // Stops beside the cursor so it doesn't cover it
@@ -146,6 +147,7 @@ final class Pet {
         case .custom: guard let custom else { return false }; frames = custom
         }
         character = value
+        attention = AttentionCycle(counts: frames.mapValues(\.count), seed: UInt64(phase * 100) + 1)
         customSize = preferences.customPetSize
         customSizeShares = preferences.customSizeShares
         let filter: CALayerContentsFilter = value == .builtin(.pixel) || value == .builtin(.claude) ? .nearest : .linear
@@ -192,7 +194,8 @@ final class Pet {
         layer.zPosition = status == "blocked" ? 10_000 : -position.y   // Pets in front (lower) draw on top
         layer.setAffineTransform(CGAffineTransform(rotationAngle: zRotation).scaledBy(x: scale, y: scale))
         body.position.y = bounce
-        body.setAffineTransform(CGAffineTransform(scaleX: facing, y: 1))
+        let mirror: CGFloat = { if case .custom = character { return 1 }; return facing }()
+        body.setAffineTransform(CGAffineTransform(scaleX: mirror, y: 1))
         // Above the head, upright, and the same on-screen size regardless of character size.
         let head = CGPoint(x: 0, y: badgeOffset).applying(CGAffineTransform(rotationAngle: zRotation))
         badge.position = CGPoint(x: position.x + head.x, y: position.y + head.y)
@@ -297,7 +300,7 @@ final class Pet {
             if runToward(w.path.point(entry), maxSpeed: dashSpeed, dt: dt) { edgeS = entry }
         } else if runAlongEdge(to: goal, on: w.path, maxSpeed: dashSpeed, dt: dt) {
             isDashing = false
-            show(.blocked, frame: Int((t + phase) * 4))
+            showAttention(t + phase)
             facing = -1   // Goal is ahead of the cursor on the path, so turning back faces the cursor
             bounce = hop((t + phase).truncatingRemainder(dividingBy: 2.5), length: 0.3, height: 6)
             return true
@@ -369,8 +372,16 @@ final class Pet {
         sprite.anchorPoint = CGPoint(x: f.anchorX, y: 0)
     }
 
+    private func showAttention(_ time: Double) {
+        if case .custom = character {
+            let sample = attention.sample(at: time)
+            show(sample.pose, frame: sample.frame)
+        } else { show(.blocked, frame: Int(time * 4)) }
+    }
+
     private func showMoving(_ t: Double, fps: Double, bob: CGFloat) {
-        show(.working, frame: Int((t + phase) * fps))
+        let pose: Pose = facing < 0 ? .walkingLeft : .walkingRight
+        show(frames[pose]?.isEmpty == false ? pose : .working, frame: Int((t + phase) * fps))
         bounce = abs(sin((t + phase) * fps * 1.15)) * bob
     }
 
