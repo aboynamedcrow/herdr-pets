@@ -1,6 +1,7 @@
 # Pet Studio and Broadway Mode
 
-Status: proposal. The user must approve this design before product code changes.
+Status: the user approved this design on 2026-10-25.
+Later instructions require screen-edge attention routes and bubbles that fit their text.
 
 ## Purpose
 

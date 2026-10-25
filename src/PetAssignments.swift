@@ -60,7 +60,13 @@ final class AssignmentStore {
         let bytes = try encoder.encode(value)
         try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
         if let previous = try? Data(contentsOf: file) {
-            try previous.write(to: file.appendingPathExtension("bak"), options: .atomic)
+            let backup: Data
+            do {
+                let decoded = try JSONDecoder().decode(AssignmentDocument.self, from: previous)
+                try validate(decoded)
+                backup = previous
+            } catch { backup = try encoder.encode(document) }
+            try backup.write(to: file.appendingPathExtension("bak"), options: .atomic)
         }
         try bytes.write(to: file, options: .atomic)
         snapshot = bytes

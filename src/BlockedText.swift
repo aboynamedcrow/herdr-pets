@@ -50,12 +50,15 @@ func currentPane(_ expected: Agent) -> Agent? {
 }
 
 func readBlockedText(_ agent: Agent) -> String? {
-    guard let pane = agent.pane_id, currentPane(agent)?.agent_status == "blocked",
+    guard let pane = agent.pane_id, let before = currentPane(agent), before.agent_status == "blocked",
           let data = boundedHerdrData(machineArguments(agent) + ["pane", "read", pane, "--source", "visible", "--lines", "100", "--format", "text"], limit: 32_768),
-          currentPane(agent)?.agent_status == "blocked",
+          let after = currentPane(agent), after.agent_status == "blocked", before.revision == after.revision,
           let text = String(data: data, encoding: .utf8), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
     // Herdr 0.9.5 exposes status and native session identity, but no structured question.
-    return text
+    var lines = text.components(separatedBy: "\n")
+    while lines.first?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true { lines.removeFirst() }
+    while lines.last?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true { lines.removeLast() }
+    return lines.joined(separator: "\n")
 }
 
 func focusPetAgent(_ agent: Agent, complete: @escaping (Bool) -> Void) {
@@ -97,7 +100,7 @@ final class BlockedTextPoller {
         let ids = Set(blocked.map(\.id))
         entries = entries.filter { ids.contains($0.key) }
         for agent in blocked {
-            if entries[agent.id]?.agent.sessionKey != agent.sessionKey {
+            if entries[agent.id]?.agent.sessionKey != agent.sessionKey || entries[agent.id]?.agent.revision != agent.revision {
                 sequence += 1
                 entries[agent.id] = Entry(agent: agent, generation: sequence)
             } else { entries[agent.id]?.agent = agent }

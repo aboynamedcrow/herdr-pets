@@ -32,7 +32,9 @@ private final class PetTile: NSView, NSDraggingSource {
     }
     required init?(coder: NSCoder) { fatalError() }
     override func draw(_ dirtyRect: NSRect) {
-        image.draw(in: CGRect(x: 8, y: 4, width: 44, height: 44), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+        let fit = min(44 / max(1, image.size.width), 44 / max(1, image.size.height))
+        let size = CGSize(width: image.size.width * fit, height: image.size.height * fit)
+        image.draw(in: CGRect(x: 8 + (44 - size.width) / 2, y: 4 + (44 - size.height) / 2, width: size.width, height: size.height), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
         (title as NSString).draw(in: CGRect(x: 60, y: 18, width: 112, height: 20), withAttributes: [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.labelColor])
     }
     override func mouseDown(with event: NSEvent) {
@@ -321,8 +323,12 @@ final class PetStudio: NSObject, NSWindowDelegate, NSSearchFieldDelegate {
         for path in paths { for type in agentType.isEmpty ? knownTypes : [agentType] { for word in role.isEmpty ? knownRoles + ["other"] : [role] {
             let agent = Agent(terminal_id: "preview", agent_status: "idle", agent: type, label: word, cwd: AssignmentStore.prefix(path, home: NSHomeDirectory()))
             if let winner = AssignmentStore.winner(for: agent, document: without, home: NSHomeDirectory()) { names.insert(name(winner.pet)) }
-            else if let rule = roles.legacyRules.first(where: { $0.matches(agent, home: NSHomeDirectory()) }) { let choice = roles.resolve(rule.pet, for: agent)
-                switch choice { case .builtin(let kind): names.insert(kind.title); case .custom(let id, _): names.insert(name("custom:" + id)) } }
+            else if let rule = roles.legacyRules.first(where: { $0.matches(agent, home: NSHomeDirectory()) }) {
+                if rule.pet == "generic" { names.formUnion(PetKind.generic.map(\.title)) }
+                else {
+                    switch roles.resolve(rule.pet, for: agent) { case .builtin(let kind): names.insert(kind.title); case .custom(let id, _): names.insert(name("custom:" + id)) }
+                }
+            }
             else { names.insert(petKind(ofType: type).title) }
         } } }
         return names.sorted()
@@ -405,10 +411,13 @@ final class PetStudio: NSObject, NSWindowDelegate, NSSearchFieldDelegate {
         do {
             try roles.assignments.save(draft, expected: expected)
             expected = roles.assignments.snapshot
-            preferences.size = settings.size; preferences.customPetSize = settings.customPetSize
-            preferences.customSizeShares = settings.customSizeShares; preferences.movementMode = settings.movementMode
-            preferences.reducedMotion = settings.reducedMotion
-            preferences.save()
+            var updated = preferences
+            updated.size = settings.size; updated.customPetSize = settings.customPetSize
+            updated.customSizeShares = settings.customSizeShares; updated.movementMode = settings.movementMode
+            updated.reducedMotion = settings.reducedMotion
+            do { try updated.saveChecked() }
+            catch { errorLabel.stringValue = "Assignments saved. Cannot save size and behavior settings: " + error.localizedDescription; return }
+            preferences = updated
             let active = Set(scene.agents.compactMap(\.sessionKey))
             roles.agentOverrides = overrides.filter { active.contains($0.key) }
             roles.reload(); scene.apply(scene.agents); scene.wake(); restoreArea()

@@ -33,13 +33,13 @@ The menu bar shows a pet icon. Click it to open the settings panel.
 
 | Herdr status | Pet |
 | --- | --- |
-| `blocked` | Runs to your pointer, shows **!**, and waves |
+| `blocked` | Follows screen edges toward your pointer. Shows **!** and varies stationary custom poses |
 | `working` | Wanders around |
 | `done` | Celebrates and shows **✓** |
 | `idle`, `unknown` | Rests |
 
 herdr-pets reads agent status, pane labels, and working folders from Herdr.
-The pets never block clicks or take focus.
+The pet overlay passes clicks through. Question bubbles have controls.
 
 ## Machines
 
@@ -69,7 +69,7 @@ The settings panel, opened from the menu bar icon, shows the total number of age
 | **Characters: By agent type** | Claude and Codex use their own characters. Other types keep a fixed character. Rules do not apply |
 | **Characters: Random** | Each pane keeps one of the 14 built-in characters |
 | **Characters: Village** | Each pane keeps a built-in or valid custom pet. Rules do not apply |
-| **Characters: Custom** | Apply the first matching rule. This is the default |
+| **Characters: Custom** | Use Studio assignments, then the first matching legacy rule. This is the default |
 | **Show pets** | Show or hide the pets |
 | **Other machines** | Show agents from enabled saved machines. On by default |
 | **Max pets** | Show 10 to 60 pets. Default 20, in steps of 5 |
@@ -86,6 +86,55 @@ Settings are saved in the plugin config folder, which you can locate with this c
 ```sh
 herdr plugin config-dir dev.minung.herdr-pets
 ```
+
+## Pet Studio
+
+Click **Open Pet Studio…** in the menu panel.
+The window has three tabs. Resize it to suit your screen.
+
+- **Assignments:** Drag a pet from the palette into a repository and role cell. Select an agent type above the grid.
+- **Sizes:** Compare custom pets with a default pet. Change the base size, custom boost, and each custom pet's share.
+- **Behavior:** Choose **Home Area** or **Broadway Mode**. Reduce Motion remains available.
+
+Cell menus offer the same choices as dragging. Choose **Use inherited choice** to clear an explicit cell.
+The grid marks inherited choices with an arrow. **Multiple choices** means the current rules can select different pets.
+Click a cell to see the matching source and affected live agents.
+Add a repository with a typed path or folder picker. Live repositories remain suggestions until you add them.
+The live-agent rows permit overrides that expire with the native agent session.
+
+**Apply** saves the draft. **Cancel** discards changes since the last Apply.
+The app keeps legacy `rules.json` unchanged. It stores grid choices in `assignments.json` beside that file.
+A backup keeps the previous valid choices. An external edit causes a save conflict. Use **Reload** before trying again.
+
+Custom selection uses this order:
+
+1. An override for the exact live agent session.
+2. A grid assignment, preferring the longest repository prefix, then an exact role, then an exact agent type.
+3. The first matching legacy rule.
+4. The agent-type fallback.
+
+Size overrides remain in plugin preferences. Reset a pet to use its metadata share again.
+For example, a 150% custom boost and a 50% share give that pet 125% size.
+The preview uses actual frames from the app, including their shared crop.
+
+### Broadway Mode
+
+Working pets walk along the bottom of the selected screen. They pause and turn at the edges.
+In both modes, attention pets follow the original screen-edge route toward the pointer.
+They do not cross the screen interior to chase it.
+The done animation and checkmark remain the same.
+
+Broadway shows blocked text in a bubble above each pet.
+One bubble shows its text. Click a compact bubble to select another pet.
+Each bubble fits its text and controls. Long text wraps and scrolls only when it cannot fit on screen.
+Herdr 0.9.5 supplies a visible terminal excerpt. The bubble labels that source.
+The app checks the machine, terminal, native session, and screen revision before it accepts a read.
+**Open agent** checks the session again before focusing its pane.
+If the text is unavailable, the bubble shows **Waiting for input**.
+Answers remain in the agent. The app keeps question text in memory.
+
+Movement reference: [Pet Town](https://github.com/abhishek944/pet-town).
+This app keeps its Swift and AppKit implementation.
 
 ## Role pets
 
@@ -128,7 +177,8 @@ A share of 0 keeps the pet at 100%. Built-in pets do not use this key.
 
 Use a Codex v2 sheet: 1536 x 2288 pixels, with 8 columns and 11 rows of 192 x 208 cells.
 Leave unused cells transparent. The loader counts frames from their alpha channel within each row's frame limit.
-Working uses row 7, blocked uses row 6, celebrate uses row 4, and resting uses row 0.
+Walking uses rows 1 and 2. Stationary attention uses available rows 0, 3, 5, 6, 7, and 8.
+Celebrate keeps row 4. Resting keeps row 0. Working keeps row 7.
 All frames share one crop box. **Custom pet size** scales custom frames. **Pet size** scales all pets.
 The loader decodes custom art once for 200% at the largest pet size on Retina screens.
 
@@ -140,15 +190,18 @@ It scores each candidate from the pet key and candidate ID.
 Adding or removing a candidate changes only panes whose winning candidate changes.
 A failed unrelated custom pet does not change another pick.
 With no valid custom art, **Village** still scores the built-in candidates. Its picks can differ from **Random**.
-With no rules, **Custom** equals **By agent type**.
+With no grid assignments or rules, **Custom** equals **By agent type**.
 The gallery shows built-in pets first, then custom pets, seven per row.
 It dims pets the mode cannot produce. Custom tooltips show `displayName`.
 **Custom pet size** defaults to 130%. It ranges from 100% to 200% in steps of 10.
 Old settings migrate to **Custom** when Role pets was on or absent.
 When Role pets was off, All 14 migrates to **Random**. The other choice migrates to **By agent type**.
 **Max pets** sets the pet limit from 10 to 60. It defaults to 20, with steps of 5.
-Missing or bad rules and art use **By agent type** in **Custom** mode. Each file logs an error only once.
-The app reads art at startup. Only **Custom** mode reads rules. It checks for changed files at most every 60 seconds.
+Missing art uses the agent-type fallback for that choice. Invalid legacy rules do not remove valid Studio assignments.
+Each bad art or legacy file logs an error only once.
+The app reads art at startup. Only **Custom** mode reads legacy rules.
+Art and legacy rules check file changes at most every 60 seconds. Studio Apply reloads them immediately.
+Studio assignments reload during polling and settings refresh.
 
 ## Turn off or uninstall
 
@@ -223,3 +276,5 @@ If no animation file is available, the pet uses the pose from the sheet. Align e
 Bug reports and pull requests are welcome.
 
 The Claude and Codex characters are fan art, and this project is not affiliated with Anthropic or OpenAI.
+
+See [the verification recipe](docs/CHECKS.md) for native checks and preview commands.

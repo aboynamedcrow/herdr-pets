@@ -21,6 +21,7 @@ struct Agent: Decodable {
 
     var pane_id: String? = nil
     var agent_session: AgentSession? = nil
+    var revision: Int? = nil
     var sessionKey: String? {
         guard let value = agent_session?.value, !value.isEmpty else { return nil }
         return "\(id):\(value.utf8.count):\(value)"
@@ -28,7 +29,7 @@ struct Agent: Decodable {
 
     // The length keeps separators inside either ID from causing a collision.
     var id: String { "\(machine.utf8.count):\(machine):\(terminal_id)" }
-    private enum CodingKeys: String, CodingKey { case terminal_id, agent_status, agent, label, cwd, pane_id, agent_session }
+    private enum CodingKeys: String, CodingKey { case terminal_id, agent_status, agent, label, cwd, pane_id, agent_session, revision }
 }
 
 struct Machine: Decodable {

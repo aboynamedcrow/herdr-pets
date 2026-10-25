@@ -10,7 +10,7 @@ func questionBubbleSize(text: String, title: String, expanded: Bool, screen: CGS
     let lineWidth = text.components(separatedBy: "\n").map { ($0 as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
     let titleWidth = (title as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 11, weight: .semibold)]).width
     let width = min(available.width, 480, max(230, ceil(lineWidth) + 24, min(320, ceil(titleWidth) + 20)))
-    let measured = (text as NSString).boundingRect(with: CGSize(width: max(1, width - 28), height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: [.font: font])
+    let measured = (text as NSString).boundingRect(with: CGSize(width: max(1, width - 24), height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: [.font: font])
     return CGSize(width: width, height: min(available.height, max(97, ceil(measured.height) + 84)))
 }
 

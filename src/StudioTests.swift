@@ -78,6 +78,11 @@ func studioSelfTest() {
     let longBubble = questionBubbleSize(text: String(repeating: "A longer question with choices. ", count: 30), title: "Terminal excerpt", expanded: true, screen: screen.size)
     precondition(shortBubble.height < longBubble.height && shortBubble.width < longBubble.width && shortBubble.height < 160)
     precondition(longBubble.height <= 688 && longBubble.width <= 488)
+    let naturalFit = questionBubbleSize(text: "Preview question: Should I apply these changes?\n1. Apply\n2. Keep the current version", title: "Preview", expanded: true, screen: screen.size)
+    let shortFit = questionBubbleSize(text: "Apply?\n1. Apply\n2. Keep", title: "Preview", expanded: true, screen: screen.size)
+    if naturalFit.height != shortFit.height {
+        FileHandle.standardError.write(Data("FAIL: Equal three-line prompts must have equal bubble heights below the width limit.\n".utf8)); exit(1)
+    }
     let firstBubble = bubbleRect(above: CGPoint(x: 495, y: 695), size: CGSize(width: 360, height: 210), screen: screen, occupied: [])
     let secondBubble = bubbleRect(above: CGPoint(x: 495, y: 695), size: CGSize(width: 180, height: 30), screen: screen, occupied: [firstBubble])
     precondition(screen.contains(firstBubble) && screen.contains(secondBubble) && !firstBubble.intersects(secondBubble))
@@ -86,6 +91,13 @@ func studioSelfTest() {
     precondition(boundedHerdrData(["overflow"], limit: 1024) == nil)
     if let savedBinary { setenv("HERDR_BIN_PATH", savedBinary, 1) } else { unsetenv("HERDR_BIN_PATH") }
     print("PASS: Live override clearing, bubble bounds, overlap avoidance, and native output cap")
+    if let paneID = ProcessInfo.processInfo.environment["HERDR_PETS_NATIVE_PANE"] {
+        struct Response: Decodable { struct Result: Decodable { var pane: Agent }; var result: Result }
+        guard let data = boundedHerdrData(["pane", "get", paneID]),
+              let native = try? JSONDecoder().decode(Response.self, from: data).result.pane,
+              currentPane(native) != nil else { fatalError("Native Herdr pane identity check failed") }
+        print("PASS: Native Herdr CLI pipe, JSON decode, and session identity")
+    }
     let home = "/fake/home"
     let pane = Agent(terminal_id: "a", agent_status: "working", agent: "codex", label: "Reviewer 2", cwd: "/repo/app")
     var doc = AssignmentDocument()
@@ -135,6 +147,18 @@ func studioSelfTest() {
     do { try store.save(duplicate, expected: store.snapshot); preconditionFailure("Must reject duplicate cells") } catch {}
     print("PASS: Studio atomic save, symlink directory, backup, external conflict, last valid data")
 
+    let preferencesURL = directory.appendingPathComponent("settings.json")
+    try! sizeSettings.saveChecked(to: preferencesURL)
+    precondition(try! JSONDecoder().decode(Preferences.self, from: Data(contentsOf: preferencesURL)).customSizeShares["sample"] == 0.5)
+    do { try sizeSettings.saveChecked(to: preferencesURL.appendingPathComponent("invalid.json")); preconditionFailure("Must report a failed preference write") } catch {}
+    var explicitGrid = AssignmentDocument()
+    explicitGrid.cells = [GridAssignment(repository: "", role: "", agentType: "", pet: "builtin:robot")]
+    try! store.save(explicitGrid, expected: store.snapshot)
+    let backup = try? JSONDecoder().decode(AssignmentDocument.self, from: Data(contentsOf: target.appendingPathComponent("assignments.json.bak")))
+    if backup != doc { FileHandle.standardError.write(Data("FAIL: A corrupt file must not replace the last valid backup.\n".utf8)); exit(1) }
+    let gallery = RolePets(directory: target, log: { _ in })
+    gallery.refresh(mode: .custom)
+    precondition(gallery.possible(mode: .custom, agents: []).builtin.contains(.robot))
     let roles = RolePets(rules: [PetRule(role: ["reviewer"], pet: "cat")], customPets: [:])
     precondition(roles.character(for: pane, mode: .custom) == .builtin(.cat))
     precondition(roles.resolve("builtin:robot", for: pane) == .builtin(.robot))
@@ -171,5 +195,19 @@ private func blockedTextSelfTest() {
     var idle = remote; idle = Agent(terminal_id: idle.terminal_id, agent_status: "working", agent: idle.agent, machine: idle.machine, pane_id: idle.pane_id, agent_session: idle.agent_session)
     poller.update([idle])
     precondition(text.isEmpty)
-    print("PASS: Blocked text rejects old sessions, disappeared panes, changed status, and cross-machine collisions")
+    now = 10
+    a.revision = 1
+    poller.update([a])
+    callbacks.removeFirst().1("FIRST SCREEN")
+    now = 13
+    poller.update([a])
+    let staleScreen = callbacks.removeFirst().1
+    a.revision = 2
+    poller.update([a])
+    precondition(text.isEmpty)
+    staleScreen("OLD SCREEN")
+    precondition(text.isEmpty)
+    callbacks.removeFirst().1("NEW SCREEN")
+    precondition(text[a.id] == "NEW SCREEN")
+    print("PASS: Blocked text rejects old sessions, screen revisions, disappeared panes, changed status, and cross-machine collisions")
 }

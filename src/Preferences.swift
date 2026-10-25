@@ -118,9 +118,12 @@ struct Preferences: Codable {
         screenOrder.insert(id, at: 0)
     }
 
-    func save() {
-        try? JSONEncoder().encode(self).write(to: Preferences.file, options: .atomic)
+    func saveChecked(to file: URL = Preferences.file) throws {
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try JSONEncoder().encode(self).write(to: file, options: .atomic)
     }
+
+    func save() { try? saveChecked() }
 }
 
 var preferences = Preferences.read()

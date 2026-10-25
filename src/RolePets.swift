@@ -312,6 +312,13 @@ final class RolePets {
                 else if cache[rule.pet]?.pet != nil { custom.insert(rule.pet) }
                 else if cache[rule.pet]?.folder.date == nil, let kind = PetKind(rawValue: rule.pet) { builtin.insert(kind) }
             }
+            for token in assignments.document.cells.map(\.pet) + Array(agentOverrides.values) {
+                if token == "generic" { builtin.formUnion(PetKind.generic); continue }
+                if token.hasPrefix("builtin:"), let kind = PetKind(rawValue: String(token.dropFirst(8))) { builtin.insert(kind); continue }
+                let id = token.hasPrefix("custom:") ? String(token.dropFirst(7)) : token
+                if cache[id]?.pet != nil { custom.insert(id) }
+                else if let kind = PetKind(rawValue: id) { builtin.insert(kind) }
+            }
             return (builtin, custom)
         }
     }
