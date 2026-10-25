@@ -65,11 +65,13 @@ func chooseCharacter(_ pane: Agent, rules: [PetRule], home: String, fallback: Pe
 struct CustomPet {
     static let rowLimits = [6, 8, 8, 4, 5, 8, 6, 6, 6]
     var displayName = ""
+    let customSizeShare: Double
     let counts: [Int]
     let crop: CGRect
     let frames: [Pose: [Frame]]
 
-    init(sheet: CGImage) throws {
+    init(sheet: CGImage, customSizeShare: Double = 1) throws {
+        self.customSizeShare = min(1, max(0, customSizeShare))
         guard sheet.width == 1536 && sheet.height == 2288 else { throw PetLoadError.invalidSheet }
         // One box across every used cell keeps feet and scale steady between poses.
         var rgba = [UInt8](repeating: 0, count: sheet.width * sheet.height * 4)
@@ -111,7 +113,7 @@ struct CustomPet {
         frames = result
     }
     func frames(sizePercent: Int) -> [Pose: [Frame]] {
-        let scale = CGFloat(min(200, max(100, sizePercent))) / 100
+        let scale = CGFloat(100 + Double(min(200, max(100, sizePercent)) - 100) * customSizeShare) / 100
         return frames.mapValues { $0.map { Frame(image: $0.image, size: CGSize(width: $0.size.width * scale, height: $0.size.height * scale), anchorX: $0.anchorX) } }
     }
 }
@@ -124,6 +126,20 @@ final class RolePets {
         let displayName: String
         let spriteVersionNumber: Int
         let spritesheetPath: String
+        let customSizeShare: Double
+        let invalidSizeShare: Bool
+
+        private enum CodingKeys: String, CodingKey { case id, displayName, spriteVersionNumber, spritesheetPath, customSizeShare }
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(String.self, forKey: .id)
+            displayName = try c.decode(String.self, forKey: .displayName)
+            spriteVersionNumber = try c.decode(Int.self, forKey: .spriteVersionNumber)
+            spritesheetPath = try c.decode(String.self, forKey: .spritesheetPath)
+            let share = try? c.decode(Double.self, forKey: .customSizeShare)
+            customSizeShare = share ?? 1
+            invalidSizeShare = c.contains(.customSizeShare) && share == nil
+        }
     }
     private struct Stamp: Equatable {
         let date: Date?
@@ -208,7 +224,10 @@ final class RolePets {
                 sheetURL = target
                 guard let source = CGImageSourceCreateWithURL(target as CFURL, nil),
                       let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { throw PetLoadError.invalidSheet }
-                loaded = try CustomPet(sheet: image)
+                if metadata.invalidSizeShare && logged.insert(metadataURL.path + ":customSizeShare").inserted {
+                    log("Invalid customSizeShare in \(metadataURL.path). Using 1.")
+                }
+                loaded = try CustomPet(sheet: image, customSizeShare: metadata.customSizeShare)
                 loaded?.displayName = metadata.displayName
             } catch {
                 // A missing override folder for a built-in name is normal.

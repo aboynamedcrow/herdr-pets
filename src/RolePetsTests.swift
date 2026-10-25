@@ -237,6 +237,7 @@ func rolePetsSelfTest() {
     precondition(orchestration.character(for: pane, mode: .custom) == .builtin(.claude))
     catalogBoundarySelfTest(sheet)
     modesSelfTest(art)
+    sizeShareSelfTest(sheet, art)
     preferences = Preferences()
     print("PASS: role pets 10/10 cwd position and bad custom override fallback")
 }
@@ -385,4 +386,63 @@ private func modesSelfTest(_ art: CustomPet) {
         precondition(control.fittingSize.width <= 300)
         print("PASS: modes 4/4 \(language) character labels fit \(control.fittingSize.width) pt of 300 pt at 11 pt")
     }
+}
+
+private func sizeShareSelfTest(_ sheet: CGImage, _ art: CustomPet) {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let folder = directory.appendingPathComponent("sample")
+    try! FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let metadata = folder.appendingPathComponent("pet.json")
+    let destination = CGImageDestinationCreateWithURL(folder.appendingPathComponent("sheet.png") as CFURL, "public.png" as CFString, 1, nil)!
+    CGImageDestinationAddImage(destination, sheet, nil)
+    precondition(CGImageDestinationFinalize(destination))
+    var now = 0.0, logs: [String] = []
+    let catalog = RolePets(directory: directory, clock: { now }, log: { logs.append($0) })
+    let base = art.frames[.resting]![0]
+    let rows: [(String, [Int])] = [
+        ("", [100, 130, 200]), (",\"customSizeShare\":1", [100, 130, 200]),
+        (",\"customSizeShare\":0.5", [100, 115, 150]), (",\"customSizeShare\":0", [100, 100, 100]),
+        (",\"customSizeShare\":-1", [100, 100, 100]), (",\"customSizeShare\":2", [100, 130, 200]),
+        (",\"customSizeShare\":\"bad\"", [100, 130, 200]), (",\"customSizeShare\":null", [100, 130, 200]),
+        (",\"customSizeShare\":true", [100, 130, 200]), (",\"customSizeShare\":[]", [100, 130, 200]),
+        (",\"customSizeShare\":{}", [100, 130, 200]),
+    ]
+    for (field, expected) in rows {
+        try! Data("{\"id\":\"sample\",\"displayName\":\"Sample\",\"spriteVersionNumber\":2,\"spritesheetPath\":\"sheet.png\"\(field)}".utf8).write(to: metadata)
+        now += 60
+        try! FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: now)], ofItemAtPath: metadata.path)
+        catalog.refresh(mode: .village)
+        precondition(catalog.customIDs == ["sample"])
+        for (setting, percent) in zip([100, 130, 200], expected) {
+            let frame = catalog.frames(for: .custom("sample", 1), sizePercent: setting)![.resting]![0]
+            precondition(abs(frame.size.height - base.size.height * CGFloat(percent) / 100) < 0.001)
+            precondition(abs(frame.size.width - base.size.width * CGFloat(percent) / 100) < 0.001)
+            precondition(frame.image.height == base.image.height && frame.image.width == base.image.width)
+        }
+    }
+    precondition(logs.count == 1 && logs[0].contains("customSizeShare"))
+    print("PASS: custom size share defaults, half, zero, clamps, invalid types load, one log per file, decode size")
+
+    let half = try! CustomPet(sheet: sheet, customSizeShare: 0.5)
+    let roles = RolePets(rules: [PetRule(pet: "half")], customPets: ["half": half])
+    preferences.visible = false
+    preferences.characterMode = .custom
+    let scene = PetScene(root: CALayer(), roles: roles)
+    let pane = Agent(terminal_id: "share", agent_status: "blocked", agent: "claude")
+    scene.apply([pane])
+    let pet = scene.pets[pane.id]!, position = scene.pets[pane.id]!.position, spot = scene.pets[pane.id]!.spot
+    let builtin = Pet(id: "builtin", kind: .claude, spot: spot, in: .zero)
+    let full = Pet(id: "full", kind: .claude, spot: spot, in: .zero)
+    for (setting, percent) in [(100, 100), (130, 115), (200, 150)] {
+        preferences.customPetSize = setting
+        scene.apply([pane])
+        full.setCharacter(.custom("full", 1), frames: art.frames(sizePercent: setting))
+        precondition(abs(pet.artSize.height - base.size.height * CGFloat(percent) / 100) < 0.001)
+        precondition(scene.pets[pane.id] === pet && pet.position == position && pet.spot == spot)
+        if setting > 100 { precondition(builtin.badgeOffset < pet.badgeOffset && pet.badgeOffset < full.badgeOffset) }
+        else { precondition(pet.badgeOffset == full.badgeOffset) }
+    }
+    precondition(half.frames(sizePercent: 130)[.resting]![0].image === half.frames[.resting]![0].image)
+    print("PASS: custom size share immediate scene updates, same pet and pixels, badge between built-in and full share")
 }

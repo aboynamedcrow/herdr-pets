@@ -116,8 +116,15 @@ All fields in a rule must match.
 Each custom folder needs `pet.json` and a PNG or WebP sheet:
 
 ```json
-{"id":"sample","displayName":"Sample","spriteVersionNumber":2,"spritesheetPath":"spritesheet.webp"}
+{"id":"sample","displayName":"Sample","spriteVersionNumber":2,"spritesheetPath":"spritesheet.webp","customSizeShare":0.5}
 ```
+
+`customSizeShare` is optional. It sets the share of the **Custom pet size** boost that applies to this pet.
+It defaults to 1. The loader clamps numbers to 0...1.
+A value that is not a number uses 1. The pet still loads, and the file logs one warning.
+The effective percent is `100 + (customPetSize - 100) * customSizeShare`.
+For example, `sample` with a share of 0.5 uses 115% at a 130% setting and 150% at 200%.
+A share of 0 keeps the pet at 100%. Built-in pets do not use this key.
 
 Use a Codex v2 sheet: 1536 x 2288 pixels, with 8 columns and 11 rows of 192 x 208 cells.
 Leave unused cells transparent. The loader counts frames from their alpha channel within each row's frame limit.
