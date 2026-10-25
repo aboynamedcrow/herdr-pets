@@ -105,7 +105,7 @@ final class Controls: NSObject {
 
     func show() {
         guard let button = item.button else { return }
-        refreshGallery()   // Agents of a new kind may have appeared meanwhile
+        build()   // Studio may have changed these settings.
         refreshScreens()   // Monitors may have been plugged in or out
         popover.contentSize = popover.contentViewController!.view.fittingSize
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
@@ -177,6 +177,7 @@ final class Controls: NSObject {
     @objc private func changeVisible(_ sender: NSSwitch) {
         preferences.visible = sender.state == .on
         preferences.save()
+        scene.apply(scene.agents)
         if preferences.visible { overlay.orderFrontRegardless(); scene.wake() } else { overlay.orderOut(nil); scene.stop() }
     }
 

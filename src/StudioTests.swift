@@ -35,6 +35,57 @@ func studioSelfTest() {
     precondition(sample.frames[.walkingLeft]?.count == 8 && sample.frames[.jump]?.count == 4)
     precondition(Sprites.frames(.codex).count == 4)
     print("PASS: Stationary attention variety, complete loops, short-sheet fallback, and four built-in poses")
+    let screen = CGRect(x: 0, y: 0, width: 500, height: 700)
+    let lane = broadwayBand(screen, scale: 1.5)
+    precondition(lane.minY == 29 && lane.height == 0)
+    let large = Pet(id: "broadway", kind: .codex, spot: CGPoint(x: 0.5, y: 0), in: lane)
+    large.setCharacter(.custom("large", 1), frames: sample.frames(sizePercent: 200, share: 1))
+    large.setStatus("blocked")
+    let stage = World(band: lane, path: Perimeter(r: screen.insetBy(dx: 29, dy: 29)), cursor: CGPoint(x: 490, y: 690), scale: 1.5, still: false, broadway: true, usableBounds: screen)
+    for tick in 0..<500 { _ = large.step(t: Double(tick) / 30, dt: 1 / 30, world: stage) }
+    precondition(large.zRotation == .pi && large.position.y == 671)
+    large.setStatus("working")
+    var left = false, right = false
+    for tick in 500..<3500 {
+        _ = large.step(t: Double(tick) / 30, dt: 1 / 30, world: stage)
+        if large.zRotation == 0 && abs(large.position.y - 29) < 0.01 {
+            left = left || large.position.x < 80; right = right || large.position.x > 420
+        }
+        let bounce = large.layer.sublayers!.first!.position.y
+        let box = CGRect(x: -24, y: -18 + bounce, width: 48, height: 96).applying(large.layer.affineTransform()).offsetBy(dx: large.position.x, dy: large.position.y)
+        precondition(screen.insetBy(dx: -0.01, dy: -0.01).contains(box))
+    }
+    precondition(left && right && large.zRotation == 0)
+    let stillStage = World(band: lane, path: Perimeter(r: screen.insetBy(dx: 29, dy: 29)), cursor: stage.cursor, scale: 1.5, still: true, broadway: true, usableBounds: screen)
+    large.setStatus("blocked")
+    precondition(!large.step(t: 200, dt: 0.1, world: stillStage) && large.position.y == 671 && large.zRotation == .pi)
+    print("PASS: Broadway screen-edge approach, large-art margins, edge turns, and Reduce Motion")
+    blockedTextSelfTest()
+    _ = NSApplication.shared
+    let picker = AssignmentCell(frame: .zero, pullsDown: false)
+    picker.addItems(withTitles: ["Use grid and rules", "Cat"])
+    picker.tokens = [nil, "builtin:cat"]
+    var picked: String? = "builtin:cat"
+    picker.choose = { picked = $0 }
+    picker.selectItem(at: 0)
+    _ = picker.perform(picker.action)
+    precondition(picked == nil, "The first live-agent option must clear its override")
+    picked = "builtin:cat"
+    picker.firstIsPlaceholder = true
+    _ = picker.perform(picker.action)
+    precondition(picked == "builtin:cat")
+    let shortBubble = questionBubbleSize(text: "Apply?", title: "Terminal excerpt", expanded: true, screen: screen.size)
+    let longBubble = questionBubbleSize(text: String(repeating: "A longer question with choices. ", count: 30), title: "Terminal excerpt", expanded: true, screen: screen.size)
+    precondition(shortBubble.height < longBubble.height && shortBubble.width < longBubble.width && shortBubble.height < 160)
+    precondition(longBubble.height <= 688 && longBubble.width <= 488)
+    let firstBubble = bubbleRect(above: CGPoint(x: 495, y: 695), size: CGSize(width: 360, height: 210), screen: screen, occupied: [])
+    let secondBubble = bubbleRect(above: CGPoint(x: 495, y: 695), size: CGSize(width: 180, height: 30), screen: screen, occupied: [firstBubble])
+    precondition(screen.contains(firstBubble) && screen.contains(secondBubble) && !firstBubble.intersects(secondBubble))
+    let savedBinary = ProcessInfo.processInfo.environment["HERDR_BIN_PATH"]
+    setenv("HERDR_BIN_PATH", "/usr/bin/yes", 1)
+    precondition(boundedHerdrData(["overflow"], limit: 1024) == nil)
+    if let savedBinary { setenv("HERDR_BIN_PATH", savedBinary, 1) } else { unsetenv("HERDR_BIN_PATH") }
+    print("PASS: Live override clearing, bubble bounds, overlap avoidance, and native output cap")
     let home = "/fake/home"
     let pane = Agent(terminal_id: "a", agent_status: "working", agent: "codex", label: "Reviewer 2", cwd: "/repo/app")
     var doc = AssignmentDocument()
@@ -88,4 +139,37 @@ func studioSelfTest() {
     precondition(roles.character(for: pane, mode: .custom) == .builtin(.cat))
     precondition(roles.resolve("builtin:robot", for: pane) == .builtin(.robot))
     print("PASS: Studio legacy fallback and explicit built-in selection")
+}
+
+private func blockedTextSelfTest() {
+    var callbacks: [(Agent, (String?) -> Void)] = []
+    var text: [String: String] = [:]
+    var now = 0.0
+    let poller = BlockedTextPoller(clock: { now }, reader: { callbacks.append(($0, $1)) }, onChange: { text = $0 })
+    var a = Agent(terminal_id: "same", agent_status: "blocked", agent: "codex", machine: "local", pane_id: "w1:p1", agent_session: AgentSession(value: "one", kind: "id"))
+    poller.update([a])
+    precondition(callbacks.count == 1)
+    let old = callbacks.removeFirst().1
+    a.agent_session = AgentSession(value: "two", kind: "id")
+    poller.update([a])
+    old("OLD QUESTION")
+    precondition(text.isEmpty)
+    let current = callbacks.removeFirst().1
+    current("CURRENT QUESTION")
+    precondition(text[a.id] == "CURRENT QUESTION")
+    var remote = a; remote.machine = "remote"
+    now = 3
+    poller.update([a, remote])
+    precondition(callbacks.count == 2 && Set(callbacks.map { $0.0.machine }) == ["local", "remote"])
+    let localLate = callbacks.first { $0.0.machine == "local" }!.1
+    let remoteDone = callbacks.first { $0.0.machine == "remote" }!.1
+    callbacks.removeAll()
+    poller.update([remote])
+    localLate("STALE LOCAL")
+    remoteDone("REMOTE QUESTION")
+    precondition(text[a.id] == nil && text[remote.id] == "REMOTE QUESTION")
+    var idle = remote; idle = Agent(terminal_id: idle.terminal_id, agent_status: "working", agent: idle.agent, machine: idle.machine, pane_id: idle.pane_id, agent_session: idle.agent_session)
+    poller.update([idle])
+    precondition(text.isEmpty)
+    print("PASS: Blocked text rejects old sessions, disappeared panes, changed status, and cross-machine collisions")
 }

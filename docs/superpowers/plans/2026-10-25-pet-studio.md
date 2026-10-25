@@ -116,7 +116,7 @@
 
 - [ ] Step 1: Add deterministic movement checks for edge turns, large-art margins, mode changes, and reduced motion.
 - [ ] Step 2: Run the build and self-test. Expect missing-feature failure.
-- [ ] Step 3: Implement bottom-lane walking, pauses, direct pointer approach, and return after blocked state.
+- [ ] Step 3: Implement bottom-lane walking, pauses, screen-edge pointer approach, and return after blocked state.
 - [ ] Step 4: Add controlled pending-read tests for session replacement, status change, disappearing panes, stale generations, and identical terminal IDs across machines.
 - [ ] Step 5: Run the build and self-test. Expect missing-feature failure.
 - [ ] Step 6: Implement a bounded CLI reader. Prefer current structured text if available. Otherwise label a visible-screen excerpt. Keep text only in memory.

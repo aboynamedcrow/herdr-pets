@@ -3,7 +3,8 @@
 import AppKit
 
 let arguments = CommandLine.arguments
-let demo = arguments.contains("--demo")
+let demo = arguments.contains("--demo") || arguments.contains("--broadway-demo")
+if arguments.contains("--broadway-demo") { preferences.movementMode = .broadway }
 let launchedByPlugin = ProcessInfo.processInfo.environment["HERDR_PLUGIN_ID"] != nil
 
 if arguments.contains("--self-test") { selfTest(); exit(0) }
@@ -50,6 +51,15 @@ if let i = arguments.firstIndex(of: "--studio-preview"), i + 1 < arguments.count
     }
 }
 if arguments.contains("--studio") { petStudio.show() }
+if let i = arguments.firstIndex(of: "--stage-preview"), i + 1 < arguments.count {
+    scene.apply(demoAgents())
+    DispatchQueue.main.async {
+        scene.apply(demoAgents())
+        do { try scene.exportPreview(to: URL(fileURLWithPath: arguments[i + 1])) }
+        catch { FileHandle.standardError.write(Data("Stage preview failed: \(error)\n".utf8)); exit(1) }
+        exit(0)
+    }
+}
 
 let agentPoller = AgentPoller(launchedByPlugin: launchedByPlugin, readAgents: { machine, complete in
     DispatchQueue.global().async {

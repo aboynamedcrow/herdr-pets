@@ -11,6 +11,12 @@ struct World {
     let cursor: CGPoint
     let scale: CGFloat
     let still: Bool       // Reduce Motion
+    var broadway = false
+    var usableBounds: CGRect? = nil
+}
+
+func broadwayBand(_ screen: CGRect, scale: CGFloat) -> CGRect {
+    CGRect(x: screen.minX, y: screen.minY + footOffset * scale + 2, width: screen.width, height: 0)
 }
 
 func crowdBand(_ area: CGRect, scale: CGFloat) -> CGRect {
@@ -119,6 +125,8 @@ final class Pet {
     private var edgeS: CGFloat?   // Position on the edge path. nil when not on the edge
     private var goalS: CGFloat?
     private var lastBand: CGRect?
+    private var lastBroadway = false
+    private var broadwayDirection: CGFloat = 1
     private var homing = false    // Heading to its spot because the area changed
 
     init(id: String, kind: PetKind, spot: CGPoint, in band: CGRect) {
@@ -171,7 +179,7 @@ final class Pet {
 
     // true while still moving. When all return false, the scene stops drawing.
     func step(t: Double, dt: CGFloat, world w: World) -> Bool {
-        defer { render() }
+        defer { if let bounds = w.usableBounds { keepArt(in: bounds) }; render() }
         if statusSince == nil { statusSince = t }
         let age = t - statusSince!
         scale = w.scale
@@ -182,10 +190,32 @@ final class Pet {
             lastBand = w.band
         }
 
+        if w.broadway != lastBroadway {
+            leaveEdge(); wanderTarget = nil
+            restUntil = 0; homing = true; lastBroadway = w.broadway
+        }
         if w.still { stayStill(w); return false }
         if status == "blocked" { return stepBlocked(t: t, age: age, dt: dt, world: w) }
+        if w.broadway {
+            if edgeS != nil { return stepReturning(t: t, dt: dt, world: w) }
+            return stepBroadway(t: t, age: age, dt: dt, world: w)
+        }
         if edgeS != nil || homing || !w.band.insetBy(dx: -2, dy: -2).contains(position) { return stepReturning(t: t, dt: dt, world: w) }
         return stepInCrowd(t: t, age: age, dt: dt, world: w)
+    }
+
+    private func keepArt(in bounds: CGRect) {
+        guard bounds.width > 0 && bounds.height > 0 else { return }
+        let art = frames.values.flatMap { $0 }
+        let half = art.map { max($0.anchorX, 1 - $0.anchorX) * $0.size.width }.max() ?? baseSize / 2
+        let height = art.map(\.size.height).max() ?? baseSize
+        let rect = CGRect(x: -half, y: -footOffset + bounce, width: half * 2, height: height)
+        func box() -> CGRect { rect.applying(CGAffineTransform(rotationAngle: zRotation).scaledBy(x: scale, y: scale)) }
+        var extent = box()
+        let fit = min(1, bounds.width / max(1, extent.width), bounds.height / max(1, extent.height))
+        if fit < 1 { scale *= fit; extent = box() }
+        position.x = min(max(position.x, bounds.minX - extent.minX), bounds.maxX - extent.maxX)
+        position.y = min(max(position.y, bounds.minY - extent.minY), bounds.maxY - extent.maxY)
     }
 
     // Writes the state to the layers. Call inside a transaction with actions disabled.
@@ -306,6 +336,45 @@ final class Pet {
             return true
         }
         showMoving(t, fps: 14, bob: 3)
+        return true
+    }
+
+    private func stepBroadway(t: Double, age: Double, dt: CGFloat, world w: World) -> Bool {
+        leaveEdge()
+        let screen = w.usableBounds ?? w.path.r
+        let art = frames.values.flatMap { $0 }
+        let half = art.map { max($0.anchorX, 1 - $0.anchorX) * $0.size.width }.max() ?? baseSize / 2
+        let width = 2 * half
+        let height = art.map(\.size.height).max() ?? baseSize
+        scale = max(0.01, min(w.scale, max(1, screen.width - 4) / width, max(1, screen.height - 4) / (height + 8)))
+        let side = width * scale / 2 + 2
+        let bottom = screen.minY + footOffset * scale + 2
+        let bounds = CGRect(x: screen.minX + side, y: bottom,
+                            width: max(0, screen.width - 2 * side),
+                            height: max(0, screen.maxY - (height - footOffset + 8) * scale - 2 - bottom))
+        position = clamped(position, to: bounds)
+        let home = CGPoint(x: bounds.minX + spot.x * bounds.width, y: bounds.minY)
+        if w.still {
+            position = home; show(standingPose); return false
+        }
+        if status == "done" && age < celebrationTime {
+            show(.celebrate, frame: Int(age / 0.2), loop: false)
+            bounce = hop(age, length: 0.8, height: 6)
+            return true
+        }
+        if abs(position.y - bounds.minY) > 1.5 || homing {
+            homing = !runToward(home, maxSpeed: returnSpeed, dt: dt)
+            showMoving(t, fps: 12, bob: 0)
+            return true
+        }
+        guard status == "working" else { show(.resting); return false }
+        if t < restUntil { show(.working, frame: Int((t + phase) * 8)); return true }
+        let goal = CGPoint(x: broadwayDirection < 0 ? bounds.minX : bounds.maxX, y: bounds.minY)
+        if runToward(goal, maxSpeed: walkSpeed, dt: dt) {
+            broadwayDirection *= -1
+            restUntil = t + Double.random(in: 0.8...2)
+        }
+        showMoving(t, fps: 14, bob: 0)
         return true
     }
 

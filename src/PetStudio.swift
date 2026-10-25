@@ -44,9 +44,10 @@ private final class PetTile: NSView, NSDraggingSource {
     func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation { .copy }
 }
 
-private final class AssignmentCell: NSPopUpButton {
+final class AssignmentCell: NSPopUpButton {
     var choose: ((String?) -> Void)?
     var inspect: (() -> Void)?
+    var firstIsPlaceholder = false
     var allowed: Set<String> = []
     var tokens: [String?] = []
     override init(frame: NSRect, pullsDown: Bool) {
@@ -56,7 +57,7 @@ private final class AssignmentCell: NSPopUpButton {
     required init?(coder: NSCoder) { fatalError() }
     override func mouseDown(with event: NSEvent) { inspect?(); super.mouseDown(with: event) }
     @objc private func selectPet() {
-        guard indexOfSelectedItem > 0, tokens.indices.contains(indexOfSelectedItem) else { return }
+        guard tokens.indices.contains(indexOfSelectedItem), !(firstIsPlaceholder && indexOfSelectedItem == 0) else { return }
         choose?(tokens[indexOfSelectedItem])
     }
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
@@ -274,6 +275,7 @@ final class PetStudio: NSObject, NSWindowDelegate, NSSearchFieldDelegate {
         for repository in repositories {
             rows.append([studioText(repository.isEmpty ? "All repositories" : repository)] + ([""] + knownRoles).map { role -> NSView in
                 let cell = AssignmentCell(frame: .zero, pullsDown: false)
+                cell.firstIsPlaceholder = true
                 let explicit = draft.cells.first { $0.repository == repository && $0.role == role && $0.agentType == agentType }
                 let inherited = inheritedChoices(repository: repository, role: role)
                 let title = explicit.map { name($0.pet) } ?? (inherited.count == 1 ? "↳ " + inherited[0] : "↳ Multiple choices")
@@ -302,6 +304,7 @@ final class PetStudio: NSObject, NSWindowDelegate, NSSearchFieldDelegate {
             for entry in entries { picker.addItem(withTitle: entry.name); picker.tokens.append(entry.token) }
             if let key = agent.sessionKey, let token = overrides[key], let index = picker.tokens.firstIndex(where: { $0 == token }) { picker.selectItem(at: index) }
             picker.isEnabled = agent.sessionKey != nil
+            picker.allowed = Set(entries.map(\.token))
             picker.choose = { [weak self] token in if let key = agent.sessionKey { self?.overrides[key] = token } }
             return studioStack([studioText("\(agent.machine) · \(agent.label ?? agent.agent ?? "Agent")\n\(agent.cwd ?? "No repository")"), picker], vertical: false)
         })
@@ -389,9 +392,14 @@ final class PetStudio: NSObject, NSWindowDelegate, NSSearchFieldDelegate {
     @objc private func selectReduced(_ sender: NSButton) { settings.reducedMotion = sender.state == .on }
 
     private func reloadDraft() {
+        roles.reload()
         draft = roles.assignments.load(); expected = roles.assignments.snapshot
         settings = preferences; overrides = roles.agentOverrides
-        refreshGrid(); refreshSizes(); errorLabel.stringValue = roles.assignments.lastError ?? ""
+        entries = PetKind.allCases.map { ("builtin:" + $0.rawValue, $0.title, Sprites.thumbnail($0)) }
+        entries += roles.customIDs.compactMap { id in roles.thumbnail(id).map { ("custom:" + id, $0.title, $0.image) } }
+        tabs?.tabViewItems[2].view = behaviorView()
+        tabs?.tabViewItems[2].view?.autoresizingMask = [.width, .height]
+        refreshPalette(); refreshGrid(); refreshSizes(); errorLabel.stringValue = roles.assignments.lastError ?? ""
     }
     private func apply() {
         do {

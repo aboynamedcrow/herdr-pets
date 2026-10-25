@@ -145,13 +145,15 @@ Idle and done pets rest at their assigned bottom positions. Done retains its cel
 Keep pets inside usable screen bounds and clear of the Dock.
 Recompute bounds when the screen arrangement or Dock changes.
 
-Blocked pets leave the bottom lane and approach the pointer on a direct path.
-They stop beside it, keep their feet upright, and show a speech bubble above their heads.
+Blocked pets reach the screen edge and traverse that edge toward the pointer.
+They stop at the nearest reachable edge position and show a speech bubble above their heads.
 Small pointer movements do not cause continuous chasing.
 After the block ends, they return to the bottom lane.
-This direct approach is the builder's interpretation of the user's request.
-Home Area keeps its current screen-edge approach.
+The user clarified that both modes must use the original screen-edge approach.
+Pets must not cross the screen interior to approach the pointer.
 
+Size each bubble to its text and controls, with normal padding.
+Wrap long text. Add scrolling only when the text cannot fit on screen.
 Keep bubbles within the screen. Offset overlapping blocked pets and bubbles.
 Show one readable bubble near the pointer. Use compact labeled bubbles for the remaining blocked pets.
 A click on a compact bubble selects it and reveals its text.
