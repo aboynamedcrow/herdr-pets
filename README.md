@@ -66,12 +66,14 @@ The settings panel, opened from the menu bar icon, shows the total number of age
 
 | Setting | Description |
 | --- | --- |
-| **By agent type** | Claude and Codex get their own characters. Other agents get a fixed character per agent type |
-| **All 14** | Each agent gets one of the 14 characters |
+| **Characters: By agent type** | Claude and Codex use their own characters. Other types keep a fixed character. Rules do not apply |
+| **Characters: Random** | Each pane keeps one of the 14 built-in characters |
+| **Characters: Village** | Each pane keeps a built-in or valid custom pet. Rules do not apply |
+| **Characters: Custom** | Apply the first matching rule. This is the default |
 | **Show pets** | Show or hide the pets |
 | **Other machines** | Show agents from enabled saved machines. On by default |
-| **Role pets** | Apply rules from the pets folder. On by default |
 | **Max pets** | Show 10 to 60 pets. Default 20, in steps of 5 |
+| **Custom pet size** | Scale custom art from 100% to 200%. Default 130%, in steps of 10 |
 | **Pet size** | Adjust pet size from 16–72 pt while **!** and **✓** stay the same size |
 | **Reduce motion** | Pets show status through poses without moving, and also follow the macOS Reduce Motion setting |
 | **Home area → Set…** | Move and resize the translucent window, then close it to save its position and size |
@@ -106,7 +108,7 @@ All fields in a rule must match.
 
 | `pet` value | Choice |
 | --- | --- |
-| `"agent"` | The current **By agent type** or **All 14** choice |
+| `"agent"` | The **By agent type** choice |
 | `"generic"` | One of the 12 generic characters, stable for each pet key |
 | A built-in name, such as `"cat"` | That built-in character |
 | A custom ID, such as `"sample"` | Art from the subfolder with that ID. Custom art takes priority over a built-in name |
@@ -120,11 +122,25 @@ Each custom folder needs `pet.json` and a PNG or WebP sheet:
 Use a Codex v2 sheet: 1536 x 2288 pixels, with 8 columns and 11 rows of 192 x 208 cells.
 Leave unused cells transparent. The loader counts frames from their alpha channel within each row's frame limit.
 Working uses row 7, blocked uses row 6, celebrate uses row 4, and resting uses row 0.
-All frames share one crop box and scale with **Pet size**.
+All frames share one crop box. **Custom pet size** scales custom frames. **Pet size** scales all pets.
+The loader decodes custom art once for 200% at the largest pet size on Retina screens.
 
-**Role pets** is on by default. Turn it off to use the current character choices without rules.
+**Characters** has four modes: **By agent type**, **Random**, **Village**, and **Custom**.
+**Custom** applies the rules above. An unmatched pane uses **By agent type**.
+**Random** keeps the same built-in pet for each pane across polls and restarts.
+**Village** includes all valid custom folders, even those without a rule.
+It scores each candidate from the pet key and candidate ID.
+Adding or removing a candidate changes only panes whose winning candidate changes.
+A failed unrelated custom pet does not change another pick.
+With no valid custom art, **Village** equals **Random**.
+With no rules, **Custom** equals **By agent type**.
+The gallery shows built-in pets first, then custom pets, seven per row.
+It dims pets the mode cannot produce. Custom tooltips show `displayName`.
+**Custom pet size** defaults to 130%. It ranges from 100% to 200% in steps of 10.
+Old settings migrate to **Custom** when Role pets was on or absent.
+When Role pets was off, All 14 migrates to **Random**. The other choice migrates to **By agent type**.
 **Max pets** sets the pet limit from 10 to 60. It defaults to 20, with steps of 5.
-Missing or bad rules and art use the current choice. Each file logs an error only once.
+Missing or bad rules and art use **By agent type** in **Custom** mode. Each file logs an error only once.
 The app reads rules and art at startup. It checks for changed files at most every 60 seconds.
 
 ## Turn off or uninstall

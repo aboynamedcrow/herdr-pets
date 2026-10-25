@@ -97,6 +97,8 @@ final class Pet {
     private let body = CALayer()  // Bounce and left/right facing
     private let sprite = CALayer()
     private var frames: [Pose: [Frame]]
+    private var customSize = 0
+    var artSize: CGSize { sprite.bounds.size }
     private let phase: Double     // Offsets each pet's motion rhythm
     private let walkSpeed = CGFloat.random(in: 48...66)
     private let blockSide = CGFloat.random(in: 26...44)   // Stops beside the cursor so it doesn't cover it
@@ -137,12 +139,13 @@ final class Pet {
 
     @discardableResult
     func setCharacter(_ value: PetCharacter, frames custom: [Pose: [Frame]]? = nil) -> Bool {
-        guard value != character else { return false }
+        guard value != character || (custom != nil && customSize != preferences.customPetSize) else { return false }
         switch value {
         case .builtin(let kind): self.kind = kind; frames = Sprites.frames(kind)
         case .custom: guard let custom else { return false }; frames = custom
         }
         character = value
+        customSize = preferences.customPetSize
         let filter: CALayerContentsFilter = value == .builtin(.pixel) || value == .builtin(.claude) ? .nearest : .linear
         sprite.magnificationFilter = filter
         sprite.minificationFilter = filter
@@ -189,12 +192,18 @@ final class Pet {
         body.position.y = bounce
         body.setAffineTransform(CGAffineTransform(scaleX: facing, y: 1))
         // Above the head, upright, and the same on-screen size regardless of character size.
-        let head = CGPoint(x: 0, y: 30 * scale + 10).applying(CGAffineTransform(rotationAngle: zRotation))
+        let head = CGPoint(x: 0, y: badgeOffset).applying(CGAffineTransform(rotationAngle: zRotation))
         badge.position = CGPoint(x: position.x + head.x, y: position.y + head.y)
         badge.zPosition = layer.zPosition + 2
         badge.setAffineTransform(CGAffineTransform(scaleX: 0.8, y: 0.8))
         badge.isHidden = !["blocked", "done", "asleep"].contains(status)   // Keep done's ✓ until the user checks the pane
         sprite.opacity = status == "asleep" ? 0.4 : 1   // The sprite, so fade() keeps its own layer opacity
+    }
+
+    var badgeOffset: CGFloat {
+        let height = frames.values.flatMap { $0 }.map(\.size.height).max() ?? baseSize
+        let top: CGFloat = { if case .custom = character { return height - footOffset }; return 30 }()
+        return (top + bounce) * scale + 10
     }
 
     // Fades in, or fades out and then removes the layers. A fade-out starts from the current opacity, so it doesn't flash.
@@ -352,7 +361,7 @@ final class Pet {
     private func show(_ pose: Pose, frame index: Int = 0, loop: Bool = true) {
         let list = frames[pose]!
         let f = list[loop ? index % list.count : min(index, list.count - 1)]
-        guard sprite.contents as AnyObject? !== f.image else { return }
+        guard sprite.contents as AnyObject? !== f.image || sprite.bounds.size != f.size else { return }
         sprite.contents = f.image
         sprite.bounds.size = f.size
         sprite.anchorPoint = CGPoint(x: f.anchorX, y: 0)

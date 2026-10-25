@@ -32,10 +32,9 @@ enum PetKind: String, CaseIterable {
     }
 }
 
-// Character for an agent. By default chosen by agent kind (claude → Claude);
-// with the "all characters" option, each agent gets a fixed one of 14.
+// Random keeps the original 14-kind assignment. Rules always fall back to agent type.
 func petKind(for agent: Agent) -> PetKind {
-    if preferences.allCharacters && !demo { return pick(PetKind.allCases, by: agent.id) }
+    if preferences.characterMode == .random && !demo { return pick(PetKind.allCases, by: agent.id) }
     return petKind(ofType: agent.agent)
 }
 

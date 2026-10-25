@@ -60,10 +60,10 @@ func selfTest() {
 
     precondition(petKind(ofType: "claude") == .claude && petKind(ofType: "Codex") == .codex)
     precondition(PetKind.generic.contains(petKind(ofType: "opencode")))
-    preferences.allCharacters = true
+    preferences.characterMode = .random
     let assigned = (0..<200).map { petKind(for: Agent(terminal_id: "term-\($0)", agent_status: "idle", agent: "claude")) }
     precondition(Set(assigned).count > 8)
-    preferences.allCharacters = false
+    preferences.characterMode = .agent
 
     for size: CGFloat in [16, 24, 48, 72] {
         let scale = size / baseSize
@@ -205,9 +205,9 @@ private func machineSelfTest() {
 
     // Machine display labels never enter the pet key or character choice.
     let before = f.agents.first { $0.machine == "mac-a" }!
-    let oldVisible = preferences.visible, oldCharacters = preferences.allCharacters
+    let oldVisible = preferences.visible, oldCharacters = preferences.characterMode
     preferences.visible = false
-    preferences.allCharacters = true
+    preferences.characterMode = .random
     let character = petKind(for: before)
     let testScene = PetScene(root: CALayer())
     testScene.apply(f.agents)
@@ -219,7 +219,7 @@ private func machineSelfTest() {
     precondition(testScene.pets[before.id] === pet && pet.position == position)
     precondition(petKind(for: f.agents.first { $0.machine == "mac-a" }!) == character)
     preferences.visible = oldVisible
-    preferences.allCharacters = oldCharacters
+    preferences.characterMode = oldCharacters
     print("PASS: machines 3/8 label changes keep character, pet, and position")
 
     // Start the hold at the first failed reply. Repeated failures never extend it.

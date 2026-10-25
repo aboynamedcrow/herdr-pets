@@ -42,7 +42,7 @@ final class PetScene {
                 pets[agent.id] = pet
                 return pet
             }()
-            let character = roles?.character(for: agent, enabled: preferences.rolePets && !demo) ?? .builtin(petKind(for: agent))
+            let character = roles?.character(for: agent, mode: demo ? .agent : preferences.characterMode) ?? .builtin(petKind(for: agent))
             if pet.setCharacter(character, frames: roles?.frames(for: character)) { changed = true }
             if pet.setStatus(agent.asleep ? "asleep" : agent.agent_status) { changed = true }
         }

@@ -26,14 +26,34 @@ extension ScreenArea {
     }
 }
 
+enum CharacterMode: String, Codable, CaseIterable {
+    case agent, random, village, custom
+    var title: String {
+        switch self {
+        case .agent: return t("에이전트별", "By agent type")
+        case .random: return t("무작위", "Random")
+        case .village: return t("마을", "Village")
+        case .custom: return t("직접 설정", "Custom")
+        }
+    }
+    var note: String {
+        switch self {
+        case .agent: return t("에이전트 종류별 캐릭터를 사용해요", "Characters follow the agent type")
+        case .random: return t("펫마다 내장 14종 중 하나가 정해져요", "Each pet keeps one of 14 built-in characters")
+        case .village: return t("내장 캐릭터와 커스텀 펫을 함께 골라요", "Pick from built-in and custom pets")
+        case .custom: return t("규칙으로 펫을 골라요", "Rules choose each pet")
+        }
+    }
+}
+
 struct Preferences: Codable {
     var size: Double = 24              // pt, sizeRange
     var visible = true
     var otherMachines = true
-    var rolePets = true
+    var characterMode: CharacterMode = .custom
+    var customPetSize = 130
     var maxPets = 20
     var reducedMotion = false
-    var allCharacters = false          // false: character by agent kind, true: one of 14 per agent
     var screenAreas: [String: ScreenArea] = [:]   // Crowd area per monitor, keyed by NSScreen.placementID
     var screenOrder: [String] = []     // Most recently selected first; automatic moves never change this
     var language = Locale.preferredLanguages.first?.hasPrefix("ko") == true ? "ko" : "en"   // "ko" or "en". Defaults to the system language
@@ -46,16 +66,28 @@ struct Preferences: Codable {
 
     init() {}
 
+    private enum CodingKeys: String, CodingKey {
+        case size, visible, otherMachines, characterMode, customPetSize, maxPets, reducedMotion, screenAreas, screenOrder, language
+    }
+    private enum LegacyKeys: String, CodingKey { case rolePets, allCharacters }
+
     // Older files missing newer keys still keep their other values.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         size = try c.decodeIfPresent(Double.self, forKey: .size) ?? size
         visible = try c.decodeIfPresent(Bool.self, forKey: .visible) ?? visible
         otherMachines = try c.decodeIfPresent(Bool.self, forKey: .otherMachines) ?? otherMachines
-        rolePets = try c.decodeIfPresent(Bool.self, forKey: .rolePets) ?? rolePets
+        if let mode = try c.decodeIfPresent(CharacterMode.self, forKey: .characterMode) {
+            characterMode = mode
+        } else {
+            let old = try decoder.container(keyedBy: LegacyKeys.self)
+            let roles = try old.decodeIfPresent(Bool.self, forKey: .rolePets) ?? true
+            let all = try old.decodeIfPresent(Bool.self, forKey: .allCharacters) ?? false
+            characterMode = roles ? .custom : all ? .random : .agent
+        }
+        customPetSize = min(200, max(100, try c.decodeIfPresent(Int.self, forKey: .customPetSize) ?? customPetSize))
         maxPets = min(60, max(10, try c.decodeIfPresent(Int.self, forKey: .maxPets) ?? maxPets))
         reducedMotion = try c.decodeIfPresent(Bool.self, forKey: .reducedMotion) ?? reducedMotion
-        allCharacters = try c.decodeIfPresent(Bool.self, forKey: .allCharacters) ?? allCharacters
         screenAreas = try c.decodeIfPresent([String: ScreenArea].self, forKey: .screenAreas) ?? [:]
         screenOrder = try c.decodeIfPresent([String].self, forKey: .screenOrder) ?? []
         language = try c.decodeIfPresent(String.self, forKey: .language) ?? language
