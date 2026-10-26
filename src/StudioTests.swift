@@ -55,7 +55,7 @@ func studioSelfTest() {
     precondition(Sprites.frames(.codex).count == 4)
     print("PASS: Stationary attention variety, complete loops, short-sheet fallback, and four built-in poses")
     let screen = CGRect(x: 0, y: 0, width: 500, height: 700)
-    let lane = broadwayBand(screen, scale: 1.5)
+    let lane = broadwayBand(screen, area: screen, floor: .bottom, scale: 1.5)
     precondition(lane.minY == 29 && lane.height == 0)
     let large = Pet(id: "broadway", kind: .codex, spot: CGPoint(x: 0.5, y: 0), in: lane)
     large.setCharacter(.custom("large", 1), frames: sample.frames(sizePercent: 200, share: 1))
@@ -79,6 +79,7 @@ func studioSelfTest() {
     large.setStatus("blocked")
     precondition(!large.step(t: 200, dt: 0.1, world: stillStage) && large.position.y == 671 && large.zRotation == .pi)
     print("PASS: Broadway screen-edge approach, large-art margins, edge turns, and Reduce Motion")
+    floorSelfTest()
     blockedTextSelfTest()
     attentionTokenSelfTest()
     _ = NSApplication.shared
@@ -364,4 +365,60 @@ func poolAssignmentSelfTest() {
     aliases.setPool(["builtin:robot"], repository: NSHomeDirectory() + "/pool-project", role: "", agentType: "codex")
     precondition(aliases.cells.count == 1 && aliases.cells[0].pets == ["builtin:robot"])
     print("PASS: Rule pool distribution, stable picks, allowed members, and legacy first pet")
+}
+
+// Flush edges choose the floor, survive a move to another screen size, and carry Broadway and clusters with them.
+func floorSelfTest() {
+    let walls = CGRect(x: 0, y: 0, width: 1000, height: 700)
+    precondition(floorEdge(of: CGRect(x: 300, y: 640, width: 260, height: 60), in: walls) == .top)
+    precondition(floorEdge(of: CGRect(x: 300, y: 637, width: 260, height: 60), in: walls) == .bottom)   // A 3 pt gap stays upright
+    precondition(floorEdge(of: CGRect(x: 0, y: 0, width: 260, height: 60), in: walls) == .bottom)       // Corner: the longer side wins
+    precondition(floorEdge(of: CGRect(x: 0, y: 0, width: 60, height: 260), in: walls) == .left)
+    let saved = try! JSONDecoder().decode(Preferences.self, from: JSONEncoder().encode({ () -> Preferences in
+        var value = Preferences()
+        value.selectScreen("A", placement: ScreenArea(CGRect(x: 0, y: 640, width: 260, height: 60), in: walls))
+        value.clusterMode = .project
+        value.shortcuts = [ShortcutAction.toggleMovement.rawValue: Shortcut(keyCode: 11, modifiers: NSEvent.ModifierFlags([.command, .option, .control, .shift]).rawValue, key: "B")]
+        return value
+    }()))
+    let taller = CGRect(x: 0, y: 0, width: 1400, height: 900)
+    precondition(saved.screenAreas["A"]!.rect(in: taller) == CGRect(x: 0, y: 840, width: 260, height: 60))
+    precondition(saved.clusterMode == .project && saved.shortcuts["toggleMovement"]?.title == "⌃⌥⇧⌘B")
+    let old = try! JSONDecoder().decode(Preferences.self, from: Data("{\"movementMode\":\"broadway\",\"screenAreas\":{\"A\":{\"right\":20,\"bottom\":8,\"width\":260,\"height\":60}}}".utf8))
+    precondition(old.movementMode == .broadway && old.clusterMode == .off && old.shortcuts.isEmpty && old.screenAreas["A"]!.rect(in: walls).minY == 8)
+    precondition(projectName("/Users/ic/r/worktrees/dot/ingwon--ic-1757/bin") == "dot" && projectName("/home/me/r/herdr-pets/src") == "herdr-pets"
+        && projectName("~/notes") == "notes" && projectName(nil) == nil)
+
+    // A top-floor Broadway pet walks its group's part of the line upside down and stays inside it.
+    let area = CGRect(x: 300, y: 640, width: 260, height: 60)
+    let lane = broadwayBand(walls, area: area, floor: .top, scale: 1)
+    let parts = segments(of: lane, floor: .top, weights: [1, 1], gap: 24)
+    precondition(lane.minY == 700 - footOffset - 2 && parts[0].maxX + 24 == parts[1].minX)
+    let pet = Pet(id: "top", kind: .codex, spot: CGPoint(x: 0.5, y: 0), in: parts[1], floor: .top)
+    pet.setStatus("working")
+    let world = World(band: parts[1], path: Perimeter(r: walls.insetBy(dx: footOffset + 2, dy: footOffset + 2)), cursor: .zero, scale: 1, still: false,
+                      broadway: true, usableBounds: walls, floor: .top)
+    var low = CGFloat.infinity, high = -CGFloat.infinity
+    for tick in 0..<3000 {
+        _ = pet.step(t: Double(tick) / 30, dt: 1 / 30, world: world)
+        if tick > 300 {
+            precondition(pet.zRotation == .pi && abs(pet.position.y - lane.minY) < 0.01 && parts[1].insetBy(dx: -1.5, dy: -1).contains(pet.position))
+            low = min(low, pet.position.x); high = max(high, pet.position.x)
+        }
+    }
+    precondition(low < parts[1].minX + 40 && high > parts[1].maxX - 40)
+
+    // Large pets under an area 3 pt below the top: the art cannot reach the lane, but working pets still walk and resting pets stop.
+    let nearTop = broadwayBand(walls, area: CGRect(x: 300, y: 637, width: 260, height: 60), floor: .bottom, scale: 1.5)
+    let tall = World(band: nearTop, path: world.path, cursor: .zero, scale: 1.5, still: false, broadway: true, usableBounds: walls, floor: .bottom)
+    let walker = Pet(id: "walker", kind: .codex, spot: CGPoint(x: 0.5, y: 0), in: nearTop), rester = Pet(id: "rester", kind: .claude, spot: CGPoint(x: 0.3, y: 0), in: nearTop)
+    walker.setStatus("working"); rester.setStatus("idle")
+    var xs = Set<Int>(), resting = false
+    for tick in 0..<3000 {
+        _ = walker.step(t: Double(tick) / 30, dt: 1 / 30, world: tall)
+        resting = !rester.step(t: Double(tick) / 30, dt: 1 / 30, world: tall)
+        if tick > 300 { xs.insert(Int(walker.position.x)) }
+    }
+    precondition(xs.count > 500 && resting && walker.position.y < nearTop.minY)
+    print("PASS: Flush-edge floors, saved snaps and shortcuts, project names, a clustered top-floor Broadway walk, and a walk under a wall")
 }

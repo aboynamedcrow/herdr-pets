@@ -76,6 +76,9 @@ The settings panel, opened from the menu bar icon, shows the total number of age
 | **Custom pet size** | Scale custom art from 100% to 200%. Default 130%, in steps of 10 |
 | **Pet size** | Adjust pet size from 16–72 pt while **!** and **✓** stay the same size |
 | **Reduce motion** | Pets show status through poses without moving, and also follow the macOS Reduce Motion setting |
+| **Movement: Mode** | **Home area** or **Broadway**. A click applies the mode at once |
+| **Movement: Alerts** | **Bubbles** show blocked text. **Icon only** shows the **!** alone |
+| **Movement: Cluster** | **Off**, **Machine**, or **Project**. Pets gather in one group for each machine or project |
 | **Home area → Set…** | Move and resize the translucent window, then close it to save its position and size |
 | **Monitor** | With two or more monitors, choose which one shows the pets. The home area moves to the same spot on that monitor |
 | **Language** | Defaults to the macOS language. Switch to 한국어 or English |
@@ -94,7 +97,7 @@ The window has three tabs. Resize it to suit your screen.
 
 - **Assignments:** Drag a pet from the palette into a repository and role cell. Select an agent type above the grid.
 - **Sizes:** Compare custom pets with a default pet. Change the base size, custom boost, and each custom pet's share.
-- **Behavior:** Choose **Home Area** or **Broadway Mode**. Reduce Motion remains available.
+- **Behavior:** Choose the movement mode, the cluster mode, question bubbles, and Reduce Motion. Set keyboard shortcuts. These settings apply at once, with no Apply.
 
 Cell menus offer the same choices as dragging. Choose **Use inherited choice** to clear an explicit cell.
 The grid marks inherited choices with an arrow. **Multiple choices** means the current rules can select different pets.
@@ -119,7 +122,40 @@ The preview uses actual frames from the app, including their shared crop.
 
 ### Broadway Mode
 
-Working pets walk along the bottom of the selected screen. They pause and turn at the edges.
+Working pets walk along the line of the home area. They pause and turn at the ends of the screen.
+A home area at the bottom gives a walk across the bottom. A home area in the middle gives a walk at its height.
+A home area snapped to the left or right edge gives a vertical walk along that edge.
+
+### Edges and clusters
+
+Snap the home area flush to a screen edge. The pets then stand with their feet on that edge.
+On the top edge, they stand upside down. On a side edge, they stand sideways.
+A home area a few points away from an edge keeps the pets upright.
+The area editor is darker when the area is flush with an edge.
+In a corner, the edge along the longer side of the area wins.
+
+**Cluster** splits the home area into one group for each machine or project.
+Each group gets space in proportion to its pet count. Local agents come first.
+The project is the repository folder from the agent's working directory. A worktree path uses its repository name.
+In Broadway, each group walks only its own part of the line.
+
+### Keyboard shortcuts
+
+Set shortcuts in **Pet Studio → Behavior**. Click a field, then press the keys. Press Escape to cancel.
+A shortcut needs a modifier key, or a function key such as F13.
+A Karabiner hyper key arrives as ⌃⌥⇧⌘. Shortcuts need no Accessibility permission.
+
+| Action | Result |
+| --- | --- |
+| Show or hide pets | The same as **Show pets** |
+| Bubbles or icon only | Changes the alert style |
+| Home area or Broadway | Changes the movement mode |
+| Show or hide the home area window | Opens or closes the area editor, so you can drag it |
+| Move to the next monitor | Moves the home area to the next monitor at the same place, with the same flush edges |
+
+Studio refuses a combination that an enabled macOS shortcut uses, for example ⌃Space for the input source. The field keeps its previous value.
+Studio cannot detect a combination that another app holds. Both apps then receive the key. Choose a combination that your other apps do not use.
+Demo and preview processes do not register shortcuts. Only the running app does.
 In both modes, attention pets follow the original screen-edge route toward the pointer.
 They do not cross the screen interior to chase it.
 The done animation and checkmark remain the same.

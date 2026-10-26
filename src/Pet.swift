@@ -6,23 +6,82 @@ let acceleration: CGFloat = 700   // pt/s²
 let celebrationTime = 1.8
 
 struct World {
-    let band: CGRect      // Floor the crowd lives on (range for the pet's anchor)
+    var band: CGRect      // Floor the crowd lives on (range for the pet's anchor). One group's part of it when pets cluster
     let path: Perimeter   // Screen-edge path a blocked pet runs along
     let cursor: CGPoint
     let scale: CGFloat
     let still: Bool       // Reduce Motion
     var broadway = false
     var usableBounds: CGRect? = nil
+    var floor = Floor.bottom
 }
 
-func broadwayBand(_ screen: CGRect, scale: CGFloat) -> CGRect {
-    CGRect(x: screen.minX, y: screen.minY + footOffset * scale + 2, width: screen.width, height: 0)
+// The screen edge the crowd stands on. Pets keep their feet toward it.
+enum Floor: CaseIterable {
+    case bottom, top, left, right
+    var angle: CGFloat {
+        switch self {
+        case .bottom: return 0
+        case .right: return .pi / 2
+        case .top: return .pi
+        case .left: return -.pi / 2
+        }
+    }
+    var horizontal: Bool { self == .bottom || self == .top }
 }
 
-func crowdBand(_ area: CGRect, scale: CGFloat) -> CGRect {
-    let side = 14 * scale + 2
-    let depth = max(0, area.height - baseSize * scale - 4)   // Higher is farther back
-    return CGRect(x: area.minX + side, y: area.minY + footOffset * scale + 2, width: max(0, area.width - 2 * side), height: depth)
+// Edges the area touches. A gap of one point or more counts as not touching.
+func flushEdges(_ area: CGRect, in walls: CGRect) -> [Floor] {
+    Floor.allCases.filter {
+        switch $0 {
+        case .bottom: return abs(area.minY - walls.minY) < 1
+        case .top: return abs(area.maxY - walls.maxY) < 1
+        case .left: return abs(area.minX - walls.minX) < 1
+        case .right: return abs(area.maxX - walls.maxX) < 1
+        }
+    }
+}
+
+// Pets stand upright unless the area is flush with an edge. In a corner, the edge along the area's longer side wins.
+func floorEdge(of area: CGRect, in walls: CGRect) -> Floor {
+    let edges = flushEdges(area, in: walls)
+    return edges.first { $0.horizontal == (area.width >= area.height) } ?? edges.first ?? .bottom
+}
+
+// Broadway pets walk the line of the area's floor across the whole screen.
+func broadwayBand(_ walls: CGRect, area: CGRect, floor: Floor, scale: CGFloat) -> CGRect {
+    let foot = footOffset * scale + 2
+    switch floor {
+    case .bottom: return CGRect(x: walls.minX, y: area.minY + foot, width: walls.width, height: 0)
+    case .top: return CGRect(x: walls.minX, y: area.maxY - foot, width: walls.width, height: 0)
+    case .left: return CGRect(x: area.minX + foot, y: walls.minY, width: 0, height: walls.height)
+    case .right: return CGRect(x: area.maxX - foot, y: walls.minY, width: 0, height: walls.height)
+    }
+}
+
+func crowdBand(_ area: CGRect, scale: CGFloat, floor: Floor = .bottom) -> CGRect {
+    let side = 14 * scale + 2, foot = footOffset * scale + 2
+    if floor.horizontal {
+        let depth = max(0, area.height - baseSize * scale - 4)   // Farther from the floor is farther back
+        return CGRect(x: area.minX + side, y: floor == .bottom ? area.minY + foot : area.maxY - foot - depth, width: max(0, area.width - 2 * side), height: depth)
+    }
+    let depth = max(0, area.width - baseSize * scale - 4)
+    return CGRect(x: floor == .left ? area.minX + foot : area.maxX - foot - depth, y: area.minY + side, width: depth, height: max(0, area.height - 2 * side))
+}
+
+// Splits a band along its floor into one part per group, sized by member count, left to right or top to bottom.
+func segments(of band: CGRect, floor: Floor, weights: [Int], gap: CGFloat) -> [CGRect] {
+    let length = floor.horizontal ? band.width : band.height
+    let gap = weights.count > 1 ? min(gap, length / CGFloat(2 * (weights.count - 1))) : 0
+    let usable = max(0, length - gap * CGFloat(weights.count - 1))
+    let total = CGFloat(max(1, weights.reduce(0, +)))
+    var offset: CGFloat = 0
+    return weights.map { weight in
+        let size = usable * CGFloat(weight) / total
+        defer { offset += size + gap }
+        return floor.horizontal ? CGRect(x: band.minX + offset, y: band.minY, width: size, height: band.height)
+            : CGRect(x: band.minX, y: band.maxY - offset - size, width: band.width, height: size)
+    }
 }
 
 func clamped(_ p: CGPoint, to r: CGRect) -> CGPoint {
@@ -30,8 +89,14 @@ func clamped(_ p: CGPoint, to r: CGRect) -> CGPoint {
 }
 
 // A spot is a position relative to the band (0...1 on each axis), so it follows the band when the area moves or resizes.
-func point(_ spot: CGPoint, in r: CGRect) -> CGPoint {
-    CGPoint(x: r.minX + spot.x * r.width, y: r.minY + spot.y * r.height)
+// x runs along the floor in the pet's own left-to-right direction. y runs away from the floor.
+func point(_ spot: CGPoint, in r: CGRect, floor: Floor = .bottom) -> CGPoint {
+    switch floor {
+    case .bottom: return CGPoint(x: r.minX + spot.x * r.width, y: r.minY + spot.y * r.height)
+    case .top: return CGPoint(x: r.maxX - spot.x * r.width, y: r.maxY - spot.y * r.height)
+    case .left: return CGPoint(x: r.minX + spot.y * r.width, y: r.maxY - spot.x * r.height)
+    case .right: return CGPoint(x: r.maxX - spot.y * r.width, y: r.minY + spot.x * r.height)
+    }
 }
 
 // Height of a single hop between 0 and length seconds.
@@ -130,14 +195,17 @@ final class Pet {
     private var lastBroadway = false
     private var broadwayDirection: CGFloat = 1
     private var homing = false    // Heading to its spot because the area changed
+    private var floor = Floor.bottom
 
-    init(id: String, kind: PetKind, spot: CGPoint, in band: CGRect) {
+    init(id: String, kind: PetKind, spot: CGPoint, in band: CGRect, floor: Floor = .bottom) {
         self.kind = kind
         self.character = .builtin(kind)
         self.spot = spot
+        self.floor = floor
         frames = Sprites.frames(kind)
         phase = Double(id.unicodeScalars.reduce(0) { $0 + Int($1.value) } % 1600) / 100
-        position = point(spot, in: band)
+        position = point(spot, in: band, floor: floor)
+        zRotation = floor.angle
         sprite.position.y = -footOffset
         let filter: CALayerContentsFilter = kind == .pixel || kind == .claude ? .nearest : .linear
         sprite.magnificationFilter = filter
@@ -193,6 +261,8 @@ final class Pet {
             if lastBand != nil { homing = true }
             lastBand = w.band
         }
+        floor = w.floor
+        if edgeS == nil && pendingEntryS == nil { zRotation = floor.angle }
 
         if w.broadway != lastBroadway {
             leaveEdge(); wanderTarget = nil
@@ -204,7 +274,7 @@ final class Pet {
             if edgeS != nil { return stepReturning(t: t, dt: dt, world: w) }
             return stepBroadway(t: t, age: age, dt: dt, world: w)
         }
-        let home = point(spot, in: w.band)
+        let home = point(spot, in: w.band, floor: w.floor)
         let containedHome = movementBounds.map { containedAnchor(home, in: $0) } ?? home
         let atHome = hypot(position.x - containedHome.x, position.y - containedHome.y) < 1.5
         if edgeS != nil || homing || (!w.band.insetBy(dx: -2, dy: -2).contains(position) && !atHome) { return stepReturning(t: t, dt: dt, world: w) }
@@ -230,7 +300,7 @@ final class Pet {
     // Writes the state to the layers. Call inside a transaction with actions disabled.
     private func render() {
         layer.position = position
-        layer.zPosition = status == "blocked" ? 10_000 : -position.y   // Pets in front (lower) draw on top
+        layer.zPosition = status == "blocked" ? 10_000 : -depth   // Pets in front (nearer the floor) draw on top
         layer.setAffineTransform(CGAffineTransform(rotationAngle: zRotation).scaledBy(x: scale, y: scale))
         body.position.y = bounce
         let mirror: CGFloat = { if case .custom = character { return 1 }; return facing }()
@@ -242,6 +312,16 @@ final class Pet {
         badge.setAffineTransform(CGAffineTransform(scaleX: 0.8, y: 0.8))
         badge.isHidden = !["blocked", "done", "asleep"].contains(status)   // Keep done's ✓ until the user checks the pane
         sprite.opacity = status == "asleep" ? 0.4 : 1   // The sprite, so fade() keeps its own layer opacity
+    }
+
+    // Distance from the floor's side of the screen, the depth axis of the crowd.
+    private var depth: CGFloat {
+        switch floor {
+        case .bottom: return position.y
+        case .top: return -position.y
+        case .left: return position.x
+        case .right: return -position.x
+        }
     }
 
     var badgeOffset: CGFloat {
@@ -273,7 +353,7 @@ final class Pet {
             stand(on: w.path)
         } else {
             leaveEdge()
-            if homing || !w.band.contains(position) { position = point(spot, in: w.band); homing = false }
+            if homing || !w.band.contains(position) { position = point(spot, in: w.band, floor: w.floor); homing = false }
         }
         show(standingPose)
     }
@@ -281,7 +361,7 @@ final class Pet {
     // Blocked ended or the area changed. If on the edge, run along it to the point nearest its spot and step off, then run to the spot.
     private func stepReturning(t: Double, dt: CGFloat, world w: World) -> Bool {
         isDashing = true
-        let home = point(spot, in: w.band)
+        let home = point(spot, in: w.band, floor: w.floor)
         if edgeS != nil {
             if runAlongEdge(to: w.path.nearest(home), on: w.path, maxSpeed: returnSpeed, dt: dt) { leaveEdge() }
         } else if runToward(home, maxSpeed: returnSpeed, dt: dt) {
@@ -316,14 +396,15 @@ final class Pet {
         return true
     }
 
-    // A trip that turns back at the band's walls instead of stopping against them, so pets don't pile up at the sides of a small area.
+    // A trip along the floor that turns back at the band's walls instead of stopping against them, so pets don't pile up at the sides of a small area.
     private func nearbyPoint(in band: CGRect, scale: CGFloat) -> CGPoint {
         func turn(_ from: CGFloat, by d: CGFloat, within lo: CGFloat, _ hi: CGFloat) -> CGFloat {
             let d = min(abs(d), (hi - lo) / 2) * (d < 0 ? -1 : 1)
             return lo...hi ~= from + d ? from + d : from - d
         }
-        return CGPoint(x: turn(position.x, by: .random(in: 70...110) * scale * (Bool.random() ? 1 : -1), within: band.minX, band.maxX),
-                       y: turn(position.y, by: .random(in: -20...20) * scale, within: band.minY, band.maxY))
+        let along = CGFloat.random(in: 70...110) * scale * (Bool.random() ? 1 : -1), across = CGFloat.random(in: -20...20) * scale
+        let (dx, dy) = floor.horizontal ? (along, across) : (across, along)
+        return CGPoint(x: turn(position.x, by: dx, within: band.minX, band.maxX), y: turn(position.y, by: dy, within: band.minY, band.maxY))
     }
 
     private func stepBlocked(t: Double, age: Double, dt: CGFloat, world w: World) -> Bool {
@@ -352,21 +433,26 @@ final class Pet {
         return true
     }
 
+    // Walks the band's line from one end to the other. The band is the whole screen's width, or one group's part of it.
     private func stepBroadway(t: Double, age: Double, dt: CGFloat, world w: World) -> Bool {
         leaveEdge()
         let screen = w.usableBounds ?? w.path.r
         let art = frames.values.flatMap { $0 }
         let half = art.map { max($0.anchorX, 1 - $0.anchorX) * $0.size.width }.max() ?? baseSize / 2
-        let width = 2 * half
         let height = art.map(\.size.height).max() ?? baseSize
-        scale = max(0.01, min(w.scale, max(1, screen.width - 4) / width, max(1, screen.height - 4) / (height + 8)))
-        let side = width * scale / 2 + 2
-        let bottom = screen.minY + footOffset * scale + 2
-        let bounds = CGRect(x: screen.minX + side, y: bottom,
-                            width: max(0, screen.width - 2 * side),
-                            height: max(0, screen.maxY - (height - footOffset + 8) * scale - 2 - bottom))
-        position = clamped(position, to: bounds)
-        let home = CGPoint(x: bounds.minX + spot.x * bounds.width, y: bounds.minY)
+        let (length, room) = w.floor.horizontal ? (screen.width, screen.height) : (screen.height, screen.width)
+        scale = max(0.01, min(w.scale, max(1, length - 4) / (2 * half), max(1, room - 4) / (height + 8)))
+        let side = half * scale + 2
+        let lane = w.floor.horizontal ? w.band.insetBy(dx: min(side, w.band.width / 2), dy: 0) : w.band.insetBy(dx: 0, dy: min(side, w.band.height / 2))
+        // Tall art near a wall cannot stand on the lane itself. Use the nearest line where the art fits.
+        func reachable(_ along: CGFloat) -> CGPoint {
+            let p = point(CGPoint(x: along, y: 0), in: lane, floor: w.floor)
+            return w.usableBounds.map { containedAnchor(p, in: $0) } ?? p
+        }
+        let home = reachable(spot.x)
+        let offLine = w.floor.horizontal
+            ? abs(position.y - home.y) > 1.5 || position.x < lane.minX - 1.5 || position.x > lane.maxX + 1.5
+            : abs(position.x - home.x) > 1.5 || position.y < lane.minY - 1.5 || position.y > lane.maxY + 1.5
         if w.still {
             position = home; show(standingPose); return false
         }
@@ -375,14 +461,14 @@ final class Pet {
             bounce = hop(age, length: 0.8, height: 6)
             return true
         }
-        if abs(position.y - bounds.minY) > 1.5 || homing {
+        if homing || offLine {
             homing = !runToward(home, maxSpeed: returnSpeed, dt: dt)
             showMoving(t, fps: 12, bob: 0)
             return true
         }
         guard status == "working" else { show(.resting); return false }
         if t < restUntil { show(.working, frame: Int((t + phase) * 8)); return true }
-        let goal = CGPoint(x: broadwayDirection < 0 ? bounds.minX : bounds.maxX, y: bounds.minY)
+        let goal = reachable(broadwayDirection < 0 ? 0 : 1)
         if runToward(goal, maxSpeed: walkSpeed, dt: dt) {
             broadwayDirection *= -1
             restUntil = t + Double.random(in: 0.8...2)
@@ -419,7 +505,8 @@ final class Pet {
         let step = advance(remaining: d, maxSpeed: maxSpeed, dt: dt)
         position.x += dx / d * step
         position.y += dy / d * step
-        if abs(dx) > 0.5 { facing = dx < 0 ? -1 : 1 }
+        let along = dx * cos(zRotation) + dy * sin(zRotation)   // Movement in the pet's own left-to-right direction
+        if abs(along) > 0.5 { facing = along < 0 ? -1 : 1 }
         return false
     }
 
@@ -443,7 +530,7 @@ final class Pet {
     private func leaveEdge() {
         pendingEntryS = nil
         edgeS = nil
-        zRotation = 0
+        zRotation = floor.angle
     }
 
     // When loop is false, stops on the last frame.

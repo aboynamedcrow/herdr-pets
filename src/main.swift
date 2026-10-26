@@ -53,6 +53,8 @@ NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenPar
 }
 NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main) { _ in scene.wake() }   // macOS Reduce Motion
 controls.install()
+let hotkeys = Hotkeys()
+if !demo && !arguments.contains(where: { $0.hasSuffix("-preview") }) { hotkeys.install() }
 if let i = arguments.firstIndex(of: "--studio-preview"), i + 1 < arguments.count {
     scene.apply(studioPreviewAgents())
     petStudio.show()
@@ -68,6 +70,11 @@ if let i = arguments.firstIndex(of: "--studio-preview"), i + 1 < arguments.count
     }
 }
 if arguments.contains("--studio") { petStudio.show() }
+if let i = arguments.firstIndex(of: "--menu-preview"), i + 1 < arguments.count {
+    do { try controls.exportPreview(to: URL(fileURLWithPath: arguments[i + 1])) }
+    catch { FileHandle.standardError.write(Data("Menu preview failed: \(error)\n".utf8)); exit(1) }
+    exit(0)
+}
 if let i = arguments.firstIndex(of: "--stage-preview"), i + 1 < arguments.count {
     scene.apply(demoAgents())
     DispatchQueue.main.async {

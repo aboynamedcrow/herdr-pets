@@ -34,6 +34,7 @@ final class Controls: NSObject {
         let content = stack([
             stack([label("herdr-pets", size: 17, weight: .semibold), label(t("기다리는 에이전트가 달려와요", "Blocked agents' pets come to you"), size: 12, secondary: true), statusLabel], spacing: 4),
             section(t("캐릭터", "Characters"), [characters, characterNote, gallery]),
+            section(t("움직임", "Movement"), [movementCard()]),
             section(t("화면", "Display"), [displayCard()]),
             NSButton(title: "Open Pet Studio…", target: self, action: #selector(openStudio)),
             separator(),
@@ -49,6 +50,24 @@ final class Controls: NSObject {
         popover.contentSize = material.fittingSize
         refreshGallery()
         refresh(connected: connected)
+    }
+
+    // Each choice applies at once.
+    private func movementCard() -> NSView {
+        func choice(_ labels: [String], _ selected: Int, _ action: Selector) -> NSSegmentedControl {
+            let control = NSSegmentedControl(labels: labels, trackingMode: .selectOne, target: self, action: action)
+            control.selectedSegment = selected
+            control.font = .systemFont(ofSize: 11)
+            return control
+        }
+        let rows = stack([
+            row(label(t("모드", "Mode"), size: 13), choice([t("모이는 곳", "Home area"), t("브로드웨이", "Broadway")], preferences.movementMode == .home ? 0 : 1, #selector(changeMovement(_:)))),
+            separator(),
+            row(label(t("알림", "Alerts"), size: 13), choice([t("말풍선", "Bubbles"), t("아이콘만", "Icon only")], preferences.showQuestionBubbles ? 0 : 1, #selector(changeBubbles(_:)))),
+            separator(),
+            row(label(t("묶기", "Cluster"), size: 13), choice(ClusterMode.allCases.map(\.title), ClusterMode.allCases.firstIndex(of: preferences.clusterMode)!, #selector(changeCluster(_:)))),
+        ], spacing: 10)
+        return card(rows)
     }
 
     private func displayCard() -> NSView {
@@ -95,6 +114,10 @@ final class Controls: NSObject {
         ] + screenRows + [
             row(label(t("언어", "Language"), size: 13), language),
         ], spacing: 10)
+        return card(rows)
+    }
+
+    private func card(_ rows: NSView) -> NSView {
         let card = NSView()
         card.wantsLayer = true
         card.layer?.cornerRadius = 10
@@ -109,6 +132,26 @@ final class Controls: NSObject {
         refreshScreens()   // Monitors may have been plugged in or out
         popover.contentSize = popover.contentViewController!.view.fittingSize
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+    }
+
+    // Writes the panel as it would open, without showing it.
+    func exportPreview(to directory: URL) throws {
+        build()
+        let view = popover.contentViewController!.view
+        view.setFrameSize(view.fittingSize)
+        view.layoutSubtreeIfNeeded()
+        guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { throw CocoaError(.fileWriteUnknown) }
+        view.effectiveAppearance.performAsCurrentDrawingAppearance { view.cacheDisplay(in: view.bounds, to: bitmap) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try bitmap.representation(using: .png, properties: [:])?.write(to: directory.appendingPathComponent("menu.png"))
+    }
+
+    // A shortcut or Studio changed a setting while the panel is open.
+    func sync() {
+        guard popover.isShown else { return }
+        build()
+        refreshScreens()
+        popover.contentSize = popover.contentViewController!.view.fittingSize
     }
 
     func refresh(connected: Bool) {
@@ -174,12 +217,10 @@ final class Controls: NSObject {
         scene.apply(scene.agents)
     }
 
-    @objc private func changeVisible(_ sender: NSSwitch) {
-        preferences.visible = sender.state == .on
-        preferences.save()
-        scene.apply(scene.agents)
-        if preferences.visible { overlay.orderFrontRegardless(); scene.wake() } else { overlay.orderOut(nil); scene.stop() }
-    }
+    @objc private func changeVisible(_ sender: NSSwitch) { setVisible(sender.state == .on) }
+    @objc private func changeMovement(_ sender: NSSegmentedControl) { setMovement(sender.selectedSegment == 0 ? .home : .broadway) }
+    @objc private func changeBubbles(_ sender: NSSegmentedControl) { setBubbles(sender.selectedSegment == 0) }
+    @objc private func changeCluster(_ sender: NSSegmentedControl) { setCluster(ClusterMode.allCases[sender.selectedSegment]) }
 
     @objc private func changeMachines(_ sender: NSSwitch) {
         preferences.otherMachines = sender.state == .on
@@ -202,11 +243,7 @@ final class Controls: NSObject {
         refresh(connected: connected)
     }
 
-    @objc private func changeMotion(_ sender: NSSwitch) {
-        preferences.reducedMotion = sender.state == .on
-        preferences.save()
-        scene.wake()
-    }
+    @objc private func changeMotion(_ sender: NSSwitch) { setReducedMotion(sender.state == .on) }
 
     @objc private func changeSize(_ sender: NSSlider) {
         preferences.size = sender.doubleValue

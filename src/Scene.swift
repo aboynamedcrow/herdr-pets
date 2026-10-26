@@ -16,6 +16,7 @@ final class PetScene {
     private var lastTime: Double?
     private var bubbleManager: SpeechBubbles?
     private var blockedTexts: [String: String] = [:]
+    private var groups: [String: String] = [:]   // Pet id → cluster key. One empty key when clustering is off
     private lazy var blockedReader = BlockedTextPoller { [weak self] texts in
         self?.blockedTexts = texts
         self?.syncBubbles()
@@ -49,10 +50,12 @@ final class PetScene {
             pets[id] = nil
             pet.fade(out: true)
         }
-        let band = preferences.movementMode == .broadway ? broadwayBand(walls, scale: petScale) : crowdBand(area, scale: petScale)
+        groups = Dictionary(shown.map { ($0.id, clusterKey($0, mode: preferences.clusterMode)) }, uniquingKeysWith: { first, _ in first })
+        let floors = layout()
         for (index, agent) in shown.enumerated() {
             let pet = pets[agent.id] ?? {
-                let pet = Pet(id: agent.id, kind: petKind(for: agent), spot: freeSpot(in: band), in: band)
+                let band = floors.bands[groups[agent.id] ?? ""] ?? floors.whole
+                let pet = Pet(id: agent.id, kind: petKind(for: agent), spot: freeSpot(in: band, floor: floors.floor), in: band, floor: floors.floor)
                 root.addSublayer(pet.layer)
                 root.addSublayer(pet.badge)
                 pet.fade(out: false)
@@ -74,15 +77,39 @@ final class PetScene {
         if changed && preferences.visible { update() }   // Show the new status in this same commit, not one tick later
     }
 
+    // The floor and each group's part of the band. Groups follow cluster key order: Local first, unknown projects last.
+    private func layout() -> (floor: Floor, whole: CGRect, bands: [String: CGRect]) {
+        let floor = floorEdge(of: area, in: walls)
+        let whole = preferences.movementMode == .broadway ? broadwayBand(walls, area: area, floor: floor, scale: petScale) : crowdBand(area, scale: petScale, floor: floor)
+        let counts = Dictionary(groups.values.map { ($0, 1) }, uniquingKeysWith: +)
+        let keys = counts.keys.sorted { clusterRank($0) != clusterRank($1) ? clusterRank($0) < clusterRank($1) : $0.localizedStandardCompare($1) == .orderedAscending }
+        let parts = segments(of: whole, floor: floor, weights: keys.map { counts[$0]! }, gap: 24 * petScale)
+        return (floor, whole, Dictionary(uniqueKeysWithValues: zip(keys, parts)))
+    }
+
+    // Each pet gets the world of its own group.
+    private func worlds(cursor: CGPoint, still: Bool, broadway: Bool) -> [String: World] {
+        let floors = layout()
+        let base = World(band: floors.whole, path: Perimeter(r: walls.insetBy(dx: footOffset * petScale + 2, dy: footOffset * petScale + 2)),
+                         cursor: cursor, scale: petScale, still: still, broadway: broadway, usableBounds: walls, floor: floors.floor)
+        var result: [String: World] = [:]
+        for id in pets.keys {
+            var world = base
+            world.band = floors.bands[groups[id] ?? ""] ?? floors.whole
+            result[id] = world
+        }
+        return result
+    }
+
     // A random spot that leans toward the middle and skips the outer 15%, retried only when it lands right on top of another pet.
-    private func freeSpot(in band: CGRect) -> CGPoint {
+    private func freeSpot(in band: CGRect, floor: Floor) -> CGPoint {
         func centered() -> CGFloat { 0.5 + (.random(in: -0.35...0.35) + .random(in: -0.35...0.35)) / 2 }   // Sum of two: peaks at the middle
-        let taken = pets.values.map { point($0.spot, in: band) }
+        let taken = pets.values.map { point($0.spot, in: band, floor: floor) }
         let near = baseSize * petScale * 0.15
         var spot = CGPoint.zero
         for _ in 0..<8 {
             spot = CGPoint(x: centered(), y: centered())
-            let p = point(spot, in: band)
+            let p = point(spot, in: band, floor: floor)
             if !taken.contains(where: { hypot($0.x - p.x, $0.y - p.y) < near }) { break }
         }
         return spot
@@ -114,16 +141,12 @@ final class PetScene {
         if let screen = screenContaining(CGPoint(x: screenOrigin.x + walls.midX, y: screenOrigin.y + walls.midY)) {
             walls = screen.visibleFrame.offsetBy(dx: -screenOrigin.x, dy: -screenOrigin.y)
         }
-        let world = World(band: preferences.movementMode == .broadway ? broadwayBand(walls, scale: petScale) : crowdBand(area, scale: petScale),
-                          path: Perimeter(r: walls.insetBy(dx: footOffset * petScale + 2, dy: footOffset * petScale + 2)),
-                          cursor: CGPoint(x: mouse.x - screenOrigin.x, y: mouse.y - screenOrigin.y),
-                          scale: petScale,
-                          still: motionReduced, broadway: preferences.movementMode == .broadway, usableBounds: walls)
+        let worlds = worlds(cursor: CGPoint(x: mouse.x - screenOrigin.x, y: mouse.y - screenOrigin.y), still: motionReduced, broadway: preferences.movementMode == .broadway)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         var moving = false
-        for pet in pets.values {
-            if pet.step(t: t, dt: dt, world: world) { moving = true }
+        for (id, pet) in pets {
+            if pet.step(t: t, dt: dt, world: worlds[id]!) { moving = true }
         }
         CATransaction.commit()
         syncBubbles()
@@ -141,12 +164,10 @@ final class PetScene {
         guard !pets.isEmpty else { throw CocoaError(.coderValueNotFound) }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         stop()
-        let world = World(band: broadwayBand(walls, scale: petScale), path: Perimeter(r: walls.insetBy(dx: footOffset * petScale + 2, dy: footOffset * petScale + 2)),
-                          cursor: CGPoint(x: walls.midX, y: walls.midY), scale: petScale,
-                          still: motionReduced, broadway: true, usableBounds: walls)
+        let worlds = worlds(cursor: CGPoint(x: walls.midX, y: walls.midY), still: motionReduced, broadway: preferences.movementMode == .broadway)
         let time = ProcessInfo.processInfo.systemUptime
         CATransaction.begin(); CATransaction.setDisableActions(true)
-        for index in 0..<180 { for pet in pets.values { _ = pet.step(t: time + Double(index) / 30, dt: 1 / 30, world: world) } }
+        for index in 0..<180 { for (id, pet) in pets { _ = pet.step(t: time + Double(index) / 30, dt: 1 / 30, world: worlds[id]!) } }
         CATransaction.commit()
         syncBubbles()
         let context = bitmap(width: max(1, Int(root.bounds.width)), height: max(1, Int(root.bounds.height)))
@@ -160,4 +181,25 @@ final class PetScene {
         try bubbleManager?.exportPreviews(to: directory)
     }
 
+}
+
+// Clustering reads only the agent's machine and working folder, so it works the same for other machines' agents.
+func clusterKey(_ agent: Agent, mode: ClusterMode) -> String {
+    switch mode {
+    case .off: return ""
+    case .machine: return agent.machine
+    case .project: return projectName(agent.cwd) ?? ""
+    }
+}
+
+private func clusterRank(_ key: String) -> Int { key == "local" ? 0 : key.isEmpty ? 2 : 1 }
+
+// The repository a folder belongs to, read from the path alone: worktrees/<repo>/… or ~/<code folder>/<repo>/… names <repo>.
+func projectName(_ cwd: String?) -> String? {
+    var parts = (cwd ?? "").split(separator: "/").map(String.init)
+    if let index = parts.firstIndex(of: "worktrees"), index + 1 < parts.count { return parts[index + 1] }
+    if parts.first == "~" { parts.removeFirst() }
+    else if parts.count >= 2 && ["Users", "home"].contains(parts[0]) { parts.removeFirst(2) }
+    if parts.count >= 2 && ["r", "src", "code", "dev", "repos", "projects", "work", "git", "Developer", "workspace"].contains(parts[0]) { return parts[1] }
+    return parts.first
 }
