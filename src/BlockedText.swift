@@ -114,15 +114,14 @@ func currentPane(_ expected: Agent, fetch: PaneFetcher = { boundedHerdrData($0, 
 }
 
 func readBlockedText(_ agent: Agent, fetch: PaneFetcher = { boundedHerdrData($0, limit: $1) }) -> String? {
-    guard let pane = agent.pane_id, let before = currentPane(agent, fetch: fetch), before.agent_status == "blocked" else { return nil }
+    guard let pane = agent.pane_id, let before = currentPane(agent, fetch: fetch), before.needsAttention else { return nil }
     let data = fetch(machineArguments(agent) + ["pane", "read", pane, "--source", "visible", "--lines", "100", "--format", "text"], 32_768)
-    guard let after = currentPane(agent, fetch: fetch), after.agent_status == "blocked",
+    guard let after = currentPane(agent, fetch: fetch), after.needsAttention,
           before.revision == after.revision else { return nil }
     // The daemon owns tokens.attention. See docs/ATTENTION.md for its contract.
     guard let data, let text = String(data: data, encoding: .utf8),
           let excerpt = latestAttentionText(text) else {
-        let attention = after.tokens?["attention"]?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return attention?.isEmpty == false ? attention : nil
+        return after.attentionReason
     }
     return excerpt
 }
@@ -193,7 +192,7 @@ final class BlockedTextPoller {
     }
 
     func update(_ agents: [Agent]) {
-        let blocked = agents.filter { $0.agent_status == "blocked" && !$0.asleep && $0.sessionKey != nil }
+        let blocked = agents.filter { $0.needsAttention && !$0.asleep && $0.sessionKey != nil }
         let ids = Set(blocked.map(\.id))
         entries = entries.filter { ids.contains($0.key) }
         for agent in blocked {

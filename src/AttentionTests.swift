@@ -33,6 +33,7 @@ func attentionTokenSelfTest() {
     screen = nil
     for (key, value) in [("pane_id", "w1:p2"), ("terminal_id", "other-terminal"), ("agent_status", "working")] {
         var changed = pane; changed[key] = value
+        if key == "agent_status" { changed["tokens"] = [:] }
         second = changed; gets = 0
         precondition(readBlockedText(expected, fetch: fetch) == nil)
     }
@@ -100,4 +101,52 @@ func attentionTokenSelfTest() {
     precondition(fresh.pets[expected.id]!.character == .builtin(.robot))
     scene.stop(); fresh.stop()
     print("PASS: Attention label transitions preserve pet, art, position, assignment, and session override")
+
+    pane["agent"] = "codex"
+    pane["agent_status"] = "idle"
+    expected = try! JSONDecoder().decode(Response.self, from: data(pane)).result.pane
+    gets = 0
+    reader.update([expected])
+    precondition(bubbleTexts[expected.id] == reason)
+    screen = Data("Synthetic idle question?".utf8)
+    precondition(readBlockedText(expected, fetch: fetch) == "Synthetic idle question?")
+    screen = Data(" \n".utf8)
+    precondition(readBlockedText(expected, fetch: fetch) == reason)
+    screen = nil
+    scene.apply([expected])
+    let tokenPet = scene.pets[expected.id]!
+    let world = World(band: CGRect(x: 0, y: 0, width: 200, height: 40), path: Perimeter(r: CGRect(x: 0, y: 0, width: 500, height: 500)), cursor: .zero, scale: 1, still: true)
+    _ = tokenPet.step(t: 0, dt: 0, world: world)
+    precondition(tokenPet.status == "blocked" && !tokenPet.badge.isHidden)
+    _ = NSApplication.shared
+    let bubbles = SpeechBubbles()
+    let visibleBefore = Set(NSApp.windows.filter(\.isVisible).map(ObjectIdentifier.init))
+    bubbles.update(agents: [expected], pets: scene.pets, texts: bubbleTexts, origin: .zero, screen: world.path.r)
+    let opened = NSApp.windows.filter { $0.isVisible && !visibleBefore.contains(ObjectIdentifier($0)) }
+    precondition(opened.count == 1)
+    print("PASS: Idle attention token shows the badge and bubble, with screen text first")
+
+    var cleared = pane
+    cleared["tokens"] = [:]
+    second = cleared; gets = 0
+    precondition(readBlockedText(expected, fetch: fetch) == nil)
+    pane = cleared; second = nil
+    expected = try! JSONDecoder().decode(Response.self, from: data(pane)).result.pane
+    reader.update([expected])
+    precondition(bubbleTexts.isEmpty)
+    scene.apply([expected])
+    _ = tokenPet.step(t: 1, dt: 0, world: world)
+    precondition(tokenPet.status == "idle" && tokenPet.badge.isHidden)
+    bubbles.update(agents: [expected], pets: scene.pets, texts: bubbleTexts, origin: .zero, screen: world.path.r)
+    precondition(opened.allSatisfy { !$0.isVisible })
+    print("PASS: Clearing the idle attention token removes the badge, bubble, and text")
+
+    var done = Agent(terminal_id: expected.terminal_id, agent_status: "done", agent: "codex", tokens: ["attention": reason])
+    scene.apply([done])
+    precondition(tokenPet.status == "blocked")
+    done.tokens = ["attention": " \n"]
+    scene.apply([done])
+    precondition(tokenPet.status == "done")
+    scene.stop()
+    print("PASS: Attention token suppresses done celebration and ignores empty values")
 }

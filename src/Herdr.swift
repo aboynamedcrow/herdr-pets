@@ -24,6 +24,11 @@ struct Agent: Decodable {
     var agent_session: AgentSession? = nil
     var revision: Int? = nil
     var tokens: [String: String]? = nil
+    var attentionReason: String? {
+        guard let reason = tokens?["attention"]?.trimmingCharacters(in: .whitespacesAndNewlines), !reason.isEmpty else { return nil }
+        return reason
+    }
+    var needsAttention: Bool { agent_status == "blocked" || attentionReason != nil }
     var sessionKey: String? {
         guard let value = agent_session?.value, !value.isEmpty else { return nil }
         return "\(id):\(value.utf8.count):\(value)"
