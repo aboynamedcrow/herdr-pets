@@ -80,6 +80,7 @@ func studioSelfTest() {
     precondition(!large.step(t: 200, dt: 0.1, world: stillStage) && large.position.y == 671 && large.zRotation == .pi)
     print("PASS: Broadway screen-edge approach, large-art margins, edge turns, and Reduce Motion")
     blockedTextSelfTest()
+    attentionTokenSelfTest()
     _ = NSApplication.shared
     let options = [AvatarChoice(token: "builtin:cat", name: "Cat", image: Sprites.thumbnail(.cat)), AvatarChoice(token: "builtin:robot", name: "Robot", image: Sprites.thumbnail(.robot))]
     let tile = AvatarAssignmentTile(choices: options, selection: [], inherited: options)

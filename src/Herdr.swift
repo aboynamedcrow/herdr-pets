@@ -8,6 +8,7 @@ let machineHoldInterval = 60.0
 struct AgentSession: Decodable {
     var value: String?
     var kind: String?
+    var agent: String? = nil
 }
 
 struct Agent: Decodable {
@@ -22,6 +23,7 @@ struct Agent: Decodable {
     var pane_id: String? = nil
     var agent_session: AgentSession? = nil
     var revision: Int? = nil
+    var tokens: [String: String]? = nil
     var sessionKey: String? {
         guard let value = agent_session?.value, !value.isEmpty else { return nil }
         return "\(id):\(value.utf8.count):\(value)"
@@ -29,7 +31,7 @@ struct Agent: Decodable {
 
     // The length keeps separators inside either ID from causing a collision.
     var id: String { "\(machine.utf8.count):\(machine):\(terminal_id)" }
-    private enum CodingKeys: String, CodingKey { case terminal_id, agent_status, agent, label, cwd, pane_id, agent_session, revision }
+    private enum CodingKeys: String, CodingKey { case terminal_id, agent_status, agent, label, cwd, pane_id, agent_session, revision, tokens }
 }
 
 struct Machine: Decodable {

@@ -39,22 +39,31 @@ func boundedHerdrData(_ arguments: [String], limit: Int = 65_536, timeout: Doubl
 
 func machineArguments(_ agent: Agent) -> [String] { agent.machine == "local" ? [] : ["--machine", agent.machine] }
 
-func currentPane(_ expected: Agent) -> Agent? {
+typealias PaneFetcher = ([String], Int) -> Data?
+
+func currentPane(_ expected: Agent, fetch: PaneFetcher = { boundedHerdrData($0, limit: $1) }) -> Agent? {
     guard let pane = expected.pane_id, expected.sessionKey != nil,
-          let data = boundedHerdrData(machineArguments(expected) + ["pane", "get", pane]) else { return nil }
+          let data = fetch(machineArguments(expected) + ["pane", "get", pane], 65_536) else { return nil }
     struct Response: Decodable { struct Result: Decodable { var pane: Agent }; var result: Result }
     guard var current = try? JSONDecoder().decode(Response.self, from: data).result.pane else { return nil }
     current.machine = expected.machine
-    guard current.id == expected.id, current.sessionKey == expected.sessionKey, current.agent == expected.agent else { return nil }
+    guard current.id == expected.id, current.pane_id == expected.pane_id,
+          current.sessionKey == expected.sessionKey,
+          current.agent == expected.agent || current.agent == "attention" || expected.agent == "attention" else { return nil }
     return current
 }
 
-func readBlockedText(_ agent: Agent) -> String? {
-    guard let pane = agent.pane_id, let before = currentPane(agent), before.agent_status == "blocked",
-          let data = boundedHerdrData(machineArguments(agent) + ["pane", "read", pane, "--source", "visible", "--lines", "100", "--format", "text"], limit: 32_768),
-          let after = currentPane(agent), after.agent_status == "blocked", before.revision == after.revision,
-          let text = String(data: data, encoding: .utf8), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-    // Herdr 0.9.5 exposes status and native session identity, but no structured question.
+func readBlockedText(_ agent: Agent, fetch: PaneFetcher = { boundedHerdrData($0, limit: $1) }) -> String? {
+    guard let pane = agent.pane_id, let before = currentPane(agent, fetch: fetch), before.agent_status == "blocked" else { return nil }
+    let data = fetch(machineArguments(agent) + ["pane", "read", pane, "--source", "visible", "--lines", "100", "--format", "text"], 32_768)
+    guard let after = currentPane(agent, fetch: fetch), after.agent_status == "blocked",
+          before.revision == after.revision else { return nil }
+    // The daemon owns tokens.attention. See docs/ATTENTION.md for its contract.
+    guard let data, let text = String(data: data, encoding: .utf8),
+          !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        let attention = after.tokens?["attention"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return attention?.isEmpty == false ? attention : nil
+    }
     var lines = text.components(separatedBy: "\n")
     while lines.first?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true { lines.removeFirst() }
     while lines.last?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true { lines.removeLast() }
