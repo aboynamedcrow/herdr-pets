@@ -1,8 +1,8 @@
 import AppKit
 
-private let petDragType = NSPasteboard.PasteboardType("dev.herdr-pets.character")
+let petDragType = NSPasteboard.PasteboardType("dev.herdr-pets.character")
 
-private final class StudioButton: NSButton {
+final class StudioButton: NSButton {
     var invoke: (() -> Void)?
     convenience init(_ title: String, _ invoke: @escaping () -> Void) {
         self.init(title: title, target: nil, action: nil)
@@ -89,22 +89,21 @@ private func studioStack(_ views: [NSView], vertical: Bool = true) -> NSStackVie
 }
 
 private final class StudioScroll: NSScrollView {
-    private var firstLayout = true
+    private var previousTop: CGFloat?
     override func layout() {
+        let wasAtTop = previousTop.map { abs(contentView.bounds.minY - $0) < 1 } ?? true
         super.layout()
         guard let documentView else { return }
         let fit = documentView.fittingSize
         let wanted = CGSize(width: max(fit.width, contentView.bounds.width), height: max(fit.height, contentView.bounds.height))
         if documentView.frame.size != wanted { documentView.setFrameSize(wanted) }
-        if firstLayout && wanted.height > 0 {
-            contentView.scroll(to: CGPoint(x: 0, y: max(0, wanted.height - contentView.bounds.height)))
-            reflectScrolledClipView(contentView)
-            firstLayout = false
-        }
+        let top: CGFloat = documentView.isFlipped ? 0 : max(0, wanted.height - contentView.bounds.height)
+        if wasAtTop { contentView.scroll(to: CGPoint(x: contentView.bounds.minX, y: top)); reflectScrolledClipView(contentView) }
+        previousTop = top
     }
 }
 
-private func studioScroll(_ document: NSView) -> NSScrollView {
+func studioScroll(_ document: NSView) -> NSScrollView {
     let scroll = StudioScroll()
     scroll.hasVerticalScroller = true; scroll.hasHorizontalScroller = true
     scroll.drawsBackground = false; scroll.documentView = document
@@ -123,6 +122,12 @@ final class PetStudio: NSObject, NSWindowDelegate, NSSearchFieldDelegate {
     private var settings = Preferences()
     private var overrides: [String: String] = [:]
     private var agentType = ""
+    private var selectedScope: (repository: String, role: String)?
+    private var activateAssignmentsOnApply = false
+    private let modeHint = studioText("", secondary: true)
+    private var activateButton: NSButton?
+    private var individualPopover: NSPopover?
+
     private let palette = NSStackView()
     private let gridHost = NSView()
     private let sizesHost = NSView()
@@ -137,10 +142,11 @@ final class PetStudio: NSObject, NSWindowDelegate, NSSearchFieldDelegate {
     init(roles: RolePets) { self.roles = roles }
 
     func show() {
-        if let window { window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true); return }
+        if let window { updateModeHint(); window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true); return }
         roles.reload()
         draft = roles.assignments.load(); expected = roles.assignments.snapshot
         settings = preferences; overrides = roles.agentOverrides
+        selectedScope = nil; activateAssignmentsOnApply = false
         entries = PetKind.allCases.map { ("builtin:" + $0.rawValue, $0.title, Sprites.thumbnail($0)) }
         entries += roles.customIDs.compactMap { id in roles.thumbnail(id).map { ("custom:" + id, $0.title, $0.image) } }
         let w = NSWindow(contentRect: CGRect(x: 100, y: 100, width: 1080, height: 730), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
@@ -166,6 +172,7 @@ final class PetStudio: NSObject, NSWindowDelegate, NSSearchFieldDelegate {
             StudioButton("Apply") { [weak self] in self?.apply() }
         ], vertical: false)
         errorLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        actions.arrangedSubviews.first?.widthAnchor.constraint(equalToConstant: 80).isActive = true
         let content = studioStack([selector, tabs, actions])
         content.translatesAutoresizingMaskIntoConstraints = false
         w.contentView!.addSubview(content)
@@ -178,9 +185,21 @@ final class PetStudio: NSObject, NSWindowDelegate, NSSearchFieldDelegate {
             actions.widthAnchor.constraint(equalTo: content.widthAnchor),
             tabs.heightAnchor.constraint(greaterThanOrEqualToConstant: 380)
         ])
+        details.identifier = NSUserInterfaceItemIdentifier("selected-rule-summary")
+        details.maximumNumberOfLines = 3; details.lineBreakMode = .byTruncatingTail
+        details.heightAnchor.constraint(equalToConstant: 48).isActive = true
+        errorLabel.maximumNumberOfLines = 2
         window = w
         refreshPalette(); refreshGrid(); refreshSizes()
         errorLabel.stringValue = roles.assignments.lastError ?? ""
+        w.contentView?.layoutSubtreeIfNeeded()
+        if let screen = w.screen ?? NSScreen.main {
+            let safe = screen.visibleFrame.insetBy(dx: 12, dy: 12)
+            var frame = w.frame
+            frame.size = CGSize(width: min(frame.width, safe.width), height: min(frame.height, safe.height))
+            frame.origin = CGPoint(x: min(max(frame.minX, safe.minX), safe.maxX - frame.width), y: min(max(frame.minY, safe.minY), safe.maxY - frame.height))
+            w.setFrame(frame, display: false)
+        }
         w.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
     }
 
@@ -215,44 +234,95 @@ final class PetStudio: NSObject, NSWindowDelegate, NSSearchFieldDelegate {
         search.placeholderString = "Find a pet"; search.delegate = self
         palette.orientation = .vertical; palette.alignment = .leading; palette.spacing = 4
         let paletteView = studioStack([search, studioScroll(palette)])
-        paletteView.widthAnchor.constraint(equalToConstant: 210).isActive = true
+        paletteView.widthAnchor.constraint(equalToConstant: 198).isActive = true
         search.widthAnchor.constraint(equalTo: paletteView.widthAnchor).isActive = true
         paletteView.arrangedSubviews.last!.widthAnchor.constraint(equalTo: paletteView.widthAnchor).isActive = true
         let types = NSPopUpButton()
-        types.addItems(withTitles: ["All agent types"] + knownTypes)
+        types.addItem(withTitle: "All agent types"); types.lastItem?.representedObject = ""
+        for type in knownTypes { types.addItem(withTitle: type.capitalized + " only"); types.lastItem?.representedObject = type }
         types.selectItem(at: agentType.isEmpty ? 0 : (knownTypes.firstIndex(of: agentType) ?? -1) + 1)
         types.target = self; types.action = #selector(selectType(_:))
-        types.toolTip = "Choose a type, then use All repositories and All roles for a type-wide assignment."
-        let path = NSTextField(); path.placeholderString = "Repository path, such as ~/r/worktrees/project"
-        path.widthAnchor.constraint(greaterThanOrEqualToConstant: 220).isActive = true
+        types.widthAnchor.constraint(equalToConstant: 160).isActive = true
+        let suggestions = NSPopUpButton(); suggestions.addItems(withTitles: ["Add a live repository…"] + Array(Set(scene.agents.compactMap(\.cwd))).sorted())
+        suggestions.widthAnchor.constraint(equalToConstant: 190).isActive = true
+        suggestions.target = self; suggestions.action = #selector(addSuggestion(_:))
+        let scopeLabel = studioText("Applies to")
+        scopeLabel.setContentHuggingPriority(.required, for: .horizontal)
+        let tools = studioStack([scopeLabel, types, StudioButton("Add role…") { [weak self] in self?.addRole() }, suggestions, NSView()], vertical: false)
+        tools.heightAnchor.constraint(equalToConstant: 32).isActive = true
+        let hint = studioText("Drop a pet onto a tile to add it. Click a tile to choose several pets.", secondary: true)
+        hint.maximumNumberOfLines = 2; hint.heightAnchor.constraint(equalToConstant: 30).isActive = true
+        let activate = StudioButton("Use assignments") { [weak self] in self?.activateAssignmentsOnApply = true; self?.updateModeHint() }
+        activateButton = activate
+        let mode = studioStack([modeHint, activate, NSView()], vertical: false)
+        mode.heightAnchor.constraint(equalToConstant: 28).isActive = true
+        modeHint.maximumNumberOfLines = 2
+        updateModeHint()
+        let path = NSTextField(); path.placeholderString = "Add a repository or folder path"
+        path.widthAnchor.constraint(greaterThanOrEqualToConstant: 160).isActive = true
+        path.setContentHuggingPriority(.defaultLow, for: .horizontal)
         let addPath = StudioButton("Add path") { [weak self, weak path] in
             guard let self, let text = path?.stringValue.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return }
             guard text.hasPrefix("/") || text == "~" || text.hasPrefix("~/") else { self.errorLabel.stringValue = "Use an absolute path or ~/ path."; return }
-            if !self.draft.repositories.contains(text) { self.draft.repositories.append(text) }; self.refreshGrid()
+            self.draft.repositories.append(text); path?.stringValue = ""; self.refreshGrid()
         }
         let browse = StudioButton("Choose folder…") { [weak self] in
             let picker = NSOpenPanel(); picker.canChooseDirectories = true; picker.canChooseFiles = false
             if picker.runModal() == .OK, let path = picker.url?.path { self?.draft.repositories.append(path); self?.refreshGrid() }
         }
-        let suggestions = NSPopUpButton(); suggestions.addItems(withTitles: ["Add a live repository…"] + Array(Set(scene.agents.compactMap(\.cwd))).sorted())
-        suggestions.target = self; suggestions.action = #selector(addSuggestion(_:))
-        let tools = studioStack([studioText("Agent type"), types, StudioButton("Add role…") { [weak self] in self?.addRole() }, suggestions], vertical: false)
-        let right = studioStack([studioText("Assignments apply in Custom mode. Select an agent type above the grid.", secondary: true), tools, studioStack([path, addPath, browse], vertical: false), gridHost, details])
-        gridHost.heightAnchor.constraint(greaterThanOrEqualToConstant: 220).isActive = true
-        for view in [tools, gridHost, details] { view.widthAnchor.constraint(equalTo: right.widthAnchor).isActive = true }
-        let all = studioStack([paletteView, right], vertical: false)
-        all.alignment = .top
+        let paths = studioStack([path, addPath, browse], vertical: false)
+        paths.heightAnchor.constraint(equalToConstant: 32).isActive = true
+        let individuals = NSButton(title: "Individual agents…", target: self, action: #selector(showIndividuals(_:)))
+        individuals.heightAnchor.constraint(equalToConstant: 28).isActive = true
+        let right = studioStack([tools, hint, mode, paths, gridHost, individuals, details])
+        gridHost.heightAnchor.constraint(greaterThanOrEqualToConstant: 200).isActive = true
+        gridHost.setContentHuggingPriority(.defaultLow, for: .vertical)
+        for view in [tools, hint, mode, paths, gridHost, details] { view.widthAnchor.constraint(equalTo: right.widthAnchor).isActive = true }
+        let all = studioStack([paletteView, right], vertical: false); all.alignment = .top
         right.widthAnchor.constraint(equalTo: all.widthAnchor, constant: -222).isActive = true
         paletteView.heightAnchor.constraint(equalTo: all.heightAnchor).isActive = true
         right.heightAnchor.constraint(equalTo: all.heightAnchor).isActive = true
         return all
     }
 
-    private var knownTypes: [String] { Array(Set(["claude", "codex"] + scene.agents.compactMap(\.agent) + roles.legacyRules.flatMap { $0.agent ?? [] })).sorted() }
-    private var knownRoles: [String] { Array(Set(draft.roles + draft.cells.map(\.role) + roles.legacyRules.flatMap { $0.role ?? [] } + scene.agents.compactMap { roleWord($0.label) })).filter { !$0.isEmpty }.sorted() }
-    private var repositories: [String] { [""] + Array(Set(draft.repositories + draft.cells.map(\.repository) + roles.legacyRules.flatMap { $0.cwd ?? [] })).filter { !$0.isEmpty }.sorted() }
+    private func updateModeHint() {
+        if activateAssignmentsOnApply { modeHint.stringValue = "Apply will use these assignments in Custom mode." }
+        else if preferences.characterMode == .custom { modeHint.stringValue = "Custom assignments are active. The first row sets defaults." }
+        else { modeHint.stringValue = "\(preferences.characterMode.title) mode is active. These assignments are off." }
+        activateButton?.isHidden = activateAssignmentsOnApply || preferences.characterMode == .custom
+    }
 
-    @objc private func selectType(_ sender: NSPopUpButton) { agentType = sender.indexOfSelectedItem == 0 ? "" : sender.titleOfSelectedItem!; refreshGrid() }
+    @objc private func showIndividuals(_ sender: NSButton) {
+        let live = studioStack(scene.agents.map { agent -> NSView in
+            let picker = AssignmentCell(frame: .zero, pullsDown: false)
+            picker.addItem(withTitle: "Use grid and rules"); picker.tokens = [nil]
+            for entry in entries { picker.addItem(withTitle: entry.name); picker.tokens.append(entry.token); picker.lastItem?.image = entry.image }
+            if let key = agent.sessionKey, let token = overrides[key], let index = picker.tokens.firstIndex(where: { $0 == token }) { picker.selectItem(at: index) }
+            picker.isEnabled = agent.sessionKey != nil; picker.allowed = Set(entries.map(\.token))
+            picker.widthAnchor.constraint(equalToConstant: 155).isActive = true
+            picker.choose = { [weak self] token in if let key = agent.sessionKey { self?.overrides[key] = token } }
+            let label = studioText("\(agent.machine == "local" ? "Local" : "Remote") · \(agent.label ?? agent.agent ?? "Agent")\n\(agent.cwd ?? "No repository")")
+            label.maximumNumberOfLines = 2; label.lineBreakMode = .byTruncatingTail
+            label.widthAnchor.constraint(equalToConstant: 380).isActive = true
+            label.toolTip = (agent.label ?? "Agent") + "\n" + (agent.cwd ?? "")
+            return studioStack([label, picker], vertical: false)
+        })
+        let root = NSView(frame: CGRect(x: 0, y: 0, width: 600, height: 420))
+        let note = studioText("Change one agent here. Apply keeps the choice for its current session.", secondary: true)
+        note.frame = CGRect(x: 12, y: 376, width: 576, height: 32)
+        let scroll = studioScroll(live); scroll.frame = CGRect(x: 12, y: 12, width: 576, height: 352)
+        root.addSubview(note); root.addSubview(scroll)
+        let popover = NSPopover(); popover.behavior = .transient
+        let controller = NSViewController(); controller.view = root; popover.contentViewController = controller
+        popover.contentSize = root.frame.size; individualPopover = popover
+        popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .maxY)
+    }
+
+    private var knownTypes: [String] { Array(Set(["claude", "codex", agentType] + draft.cells.map(\.agentType) + scene.agents.compactMap(\.agent) + roles.legacyRules.flatMap { $0.agent ?? [] })).filter { !$0.isEmpty }.sorted() }
+    private var knownRoles: [String] { Array(Set(draft.roles + draft.cells.map(\.role) + roles.legacyRules.flatMap { $0.role ?? [] } + scene.agents.compactMap { roleWord($0.label) })).filter { !$0.isEmpty }.sorted() }
+    private var repositories: [String] { [""] + Array(Set((draft.repositories + draft.cells.map(\.repository) + roles.legacyRules.flatMap { $0.cwd ?? [] }).map { AssignmentStore.prefix($0, home: NSHomeDirectory()) })).filter { !$0.isEmpty }.sorted() }
+
+    @objc private func selectType(_ sender: NSPopUpButton) { agentType = sender.selectedItem?.representedObject as? String ?? ""; selectedScope = nil; refreshGrid() }
     @objc private func addSuggestion(_ sender: NSPopUpButton) { if sender.indexOfSelectedItem > 0 { draft.repositories.append(sender.titleOfSelectedItem!); refreshGrid(); sender.selectItem(at: 0) } }
     func controlTextDidChange(_ obj: Notification) { refreshPalette() }
 
@@ -273,45 +343,51 @@ final class PetStudio: NSObject, NSWindowDelegate, NSSearchFieldDelegate {
         NSLayoutConstraint.activate([view.leadingAnchor.constraint(equalTo: host.leadingAnchor), view.trailingAnchor.constraint(equalTo: host.trailingAnchor), view.topAnchor.constraint(equalTo: host.topAnchor), view.bottomAnchor.constraint(equalTo: host.bottomAnchor)])
     }
 
+    private func choice(_ token: String) -> AvatarChoice {
+        if let entry = entries.first(where: { $0.token == token }) { return AvatarChoice(token: token, name: entry.name, image: entry.image) }
+        let title = token.hasPrefix("custom:") ? String(token.dropFirst(7)) : token
+        return AvatarChoice(token: token, name: title, image: NSImage(systemSymbolName: "questionmark.square", accessibilityDescription: "Missing pet") ?? NSImage(size: NSSize(width: 32, height: 32)))
+    }
+
     private func refreshGrid() {
-        var rows: [[NSView]] = [[studioText("Repository / role")] + ([""] + knownRoles).map { studioText($0.isEmpty ? "All roles" : $0) }]
+        let previous = (gridHost.subviews.first as? NSScrollView)?.contentView.bounds.origin
+        var rows: [[NSView]] = [[studioText("Repository / role")] + ([""] + knownRoles).map { studioText($0.isEmpty ? "All roles" : $0.capitalized) }]
         for repository in repositories {
-            rows.append([studioText(repository.isEmpty ? "All repositories" : repository)] + ([""] + knownRoles).map { role -> NSView in
-                let cell = AssignmentCell(frame: .zero, pullsDown: false)
-                cell.firstIsPlaceholder = true
-                let explicit = draft.cells.first { $0.repository == repository && $0.role == role && $0.agentType == agentType }
-                let inherited = inheritedChoices(repository: repository, role: role)
-                let title = explicit.map { name($0.pet) } ?? (inherited.count == 1 ? "↳ " + inherited[0] : "↳ Multiple choices")
-                cell.addItem(withTitle: title); cell.tokens = [nil]; cell.item(at: 0)?.isEnabled = true
-                cell.addItem(withTitle: "Use inherited choice"); cell.tokens.append(nil)
-                for entry in entries { cell.addItem(withTitle: entry.name); cell.tokens.append(entry.token) }
-                cell.allowed = Set(entries.map(\.token)); cell.selectItem(at: 0)
-                cell.setAccessibilityLabel("\(repository.isEmpty ? "All repositories" : repository), \(role.isEmpty ? "All roles" : role), \(agentType.isEmpty ? "All types" : agentType): \(title)")
-                cell.toolTip = explicit == nil ? "Inherited. Choose a pet or drop one here." : "Explicit assignment. Choose inherited to remove it."
-                cell.widthAnchor.constraint(equalToConstant: 155).isActive = true
-                cell.inspect = { [weak self] in self?.describe(repository: repository, role: role) }
-                cell.choose = { [weak self] pet in
+            let title = repository.isEmpty ? "All repositories" : repository.replacingOccurrences(of: NSHomeDirectory(), with: "~", options: .anchored)
+            let label = studioText(title); label.maximumNumberOfLines = 3; label.lineBreakMode = .byTruncatingMiddle; label.toolTip = repository
+            rows.append([label] + ([""] + knownRoles).map { role -> NSView in
+                let explicit = draft.cells.first { AssignmentStore.prefix($0.repository, home: NSHomeDirectory()) == repository && $0.role == role && $0.agentType == agentType }
+                let inherited = inheritedChoices(repository: repository, role: role).map(choice)
+                let selection = explicit?.pets ?? []
+                let options = entries.map { AvatarChoice(token: $0.token, name: $0.name, image: $0.image) } + selection.filter { token in !entries.contains { $0.token == token } }.map(choice)
+                let tile = AvatarAssignmentTile(choices: options, selection: selection, inherited: inherited)
+                tile.scopeLabel = role.isEmpty ? "All roles" : role.capitalized
+                tile.widthAnchor.constraint(equalToConstant: 150).isActive = true
+                tile.heightAnchor.constraint(equalToConstant: 100).isActive = true
+                tile.setAccessibilityLabel("\(title), \(role.isEmpty ? "All roles" : role), \(agentType.isEmpty ? "All types" : agentType): \(selection.isEmpty ? "From rules" : selection.map(name).joined(separator: ", "))")
+                tile.inspect = { [weak self] in self?.selectedScope = (repository, role); self?.describe(repository: repository, role: role) }
+                tile.choose = { [weak self, weak tile] pool in
                     guard let self else { return }
-                    self.draft.set(pet, repository: repository, role: role, agentType: self.agentType)
-                    self.describe(repository: repository, role: role)
-                    self.refreshGrid()
+                    self.draft.setPool(pool, repository: repository, role: role, agentType: self.agentType)
+                    self.selectedScope = (repository, role)
+                    if tile?.isEditing == true { self.describe(repository: repository, role: role) } else { self.refreshGrid() }
                 }
-                return cell
+                tile.didClosePicker = { [weak self] in self?.refreshGrid() }
+                return tile
             })
         }
         let grid = NSGridView(views: rows); grid.rowSpacing = 10; grid.columnSpacing = 10
-        grid.column(at: 0).width = 220
-        let live = studioStack([studioText("Live agents: overrides last for this native session.", secondary: true)] + scene.agents.map { agent -> NSView in
-            let picker = AssignmentCell(frame: .zero, pullsDown: false)
-            picker.addItem(withTitle: "Use grid and rules"); picker.tokens = [nil]
-            for entry in entries { picker.addItem(withTitle: entry.name); picker.tokens.append(entry.token) }
-            if let key = agent.sessionKey, let token = overrides[key], let index = picker.tokens.firstIndex(where: { $0 == token }) { picker.selectItem(at: index) }
-            picker.isEnabled = agent.sessionKey != nil
-            picker.allowed = Set(entries.map(\.token))
-            picker.choose = { [weak self] token in if let key = agent.sessionKey { self?.overrides[key] = token } }
-            return studioStack([studioText("\(agent.machine) · \(agent.label ?? agent.agent ?? "Agent")\n\(agent.cwd ?? "No repository")"), picker], vertical: false)
-        })
-        fill(gridHost, with: studioScroll(studioStack([grid, live])))
+        grid.column(at: 0).width = 210
+        let scroll = studioScroll(grid)
+        fill(gridHost, with: scroll)
+        gridHost.layoutSubtreeIfNeeded(); scroll.needsLayout = true; scroll.layoutSubtreeIfNeeded()
+        if let previous {
+            let maximum = CGPoint(x: max(0, grid.frame.width - scroll.contentSize.width), y: max(0, grid.frame.height - scroll.contentSize.height))
+            scroll.contentView.scroll(to: CGPoint(x: min(previous.x, maximum.x), y: min(previous.y, maximum.y)))
+            scroll.reflectScrolledClipView(scroll.contentView)
+        }
+        if let scope = selectedScope { describe(repository: scope.repository, role: scope.role) }
+        else { details.stringValue = "The first row sets defaults. Folder rows add exceptions.\nBlue tiles are your choices. Gray tiles use existing rules." }
     }
 
     private func name(_ token: String) -> String { entries.first { $0.token == token }?.name ?? token }
@@ -319,33 +395,27 @@ final class PetStudio: NSObject, NSWindowDelegate, NSSearchFieldDelegate {
     private func inheritedChoices(repository: String, role: String) -> [String] {
         var without = draft
         without.set(nil, repository: repository, role: role, agentType: agentType)
-        var names: Set<String> = []
+        var tokens: Set<String> = []
         let paths = repository.isEmpty ? repositories.filter { !$0.isEmpty } + ["/other"] : [repository] + repositories.filter { $0.hasPrefix(repository + "/") }
         for path in paths { for type in agentType.isEmpty ? knownTypes : [agentType] { for word in role.isEmpty ? knownRoles + ["other"] : [role] {
             let agent = Agent(terminal_id: "preview", agent_status: "idle", agent: type, label: word, cwd: AssignmentStore.prefix(path, home: NSHomeDirectory()))
-            if let winner = AssignmentStore.winner(for: agent, document: without, home: NSHomeDirectory()) { names.insert(name(winner.pet)) }
+            if let winner = AssignmentStore.winner(for: agent, document: without, home: NSHomeDirectory()) { tokens.formUnion(winner.pets) }
             else if let rule = roles.legacyRules.first(where: { $0.matches(agent, home: NSHomeDirectory()) }) {
-                if rule.pet == "generic" { names.formUnion(PetKind.generic.map(\.title)) }
-                else {
-                    switch roles.resolve(rule.pet, for: agent) { case .builtin(let kind): names.insert(kind.title); case .custom(let id, _): names.insert(name("custom:" + id)) }
-                }
-            }
-            else { names.insert(petKind(ofType: type).title) }
+                if rule.pet == "generic" { tokens.formUnion(PetKind.generic.map { "builtin:" + $0.rawValue }) }
+                else { switch roles.resolve(rule.pet, for: agent) { case .builtin(let kind): tokens.insert("builtin:" + kind.rawValue); case .custom(let id, _): tokens.insert("custom:" + id) } }
+            } else { tokens.insert("builtin:" + petKind(ofType: type).rawValue) }
         } } }
-        return names.sorted()
+        return tokens.sorted()
     }
 
     private func describe(repository: String, role: String) {
         let rule = PetRule(role: role.isEmpty ? nil : [role], agent: agentType.isEmpty ? nil : [agentType], cwd: repository.isEmpty ? nil : [repository], pet: "")
-        let affected = scene.agents.filter { rule.matches($0, home: NSHomeDirectory()) }.map { agent -> String in
-            let source: String
-            if let key = agent.sessionKey, let token = overrides[key] { source = "live override: " + name(token) }
-            else if let cell = AssignmentStore.winner(for: agent, document: draft, home: NSHomeDirectory()) { source = "grid: " + name(cell.pet) }
-            else if let index = roles.legacyRules.firstIndex(where: { $0.matches(agent, home: NSHomeDirectory()) }) { source = "Custom rule \(index + 1): " + roles.legacyRules[index].pet }
-            else { source = "agent type fallback" }
-            return "\(agent.machine): \(agent.label ?? agent.agent ?? "Agent") → \(source)"
-        }
-        details.stringValue = "Precedence: live override, longest repository prefix, exact role, exact type, then ordered Custom rules.\nAffected agents: " + (affected.isEmpty ? "None running" : affected.joined(separator: ", "))
+        let count = scene.agents.filter { rule.matches($0, home: NSHomeDirectory()) }.count
+        let explicit = draft.cells.first { AssignmentStore.prefix($0.repository, home: NSHomeDirectory()) == repository && $0.role == role && $0.agentType == agentType }
+        let scope = "\(agentType.isEmpty ? "All agent types" : agentType.capitalized) · \(repository.isEmpty ? "All repositories" : repository.replacingOccurrences(of: NSHomeDirectory(), with: "~", options: .anchored)) · \(role.isEmpty ? "All roles" : role)"
+        let selected = explicit.map { $0.pets.count == 1 ? name($0.pet) : "\($0.pets.count) pets in this pool" } ?? "Uses existing rules"
+        details.stringValue = scope + "\n" + selected + ". \(count) matching agents."
+        details.toolTip = details.stringValue
     }
 
     private func addRole() {
@@ -406,6 +476,7 @@ final class PetStudio: NSObject, NSWindowDelegate, NSSearchFieldDelegate {
         roles.reload()
         draft = roles.assignments.load(); expected = roles.assignments.snapshot
         settings = preferences; overrides = roles.agentOverrides
+        selectedScope = nil; activateAssignmentsOnApply = false
         entries = PetKind.allCases.map { ("builtin:" + $0.rawValue, $0.title, Sprites.thumbnail($0)) }
         entries += roles.customIDs.compactMap { id in roles.thumbnail(id).map { ("custom:" + id, $0.title, $0.image) } }
         tabs?.tabViewItems[2].view = behaviorView()
@@ -419,10 +490,11 @@ final class PetStudio: NSObject, NSWindowDelegate, NSSearchFieldDelegate {
             var updated = preferences
             updated.size = settings.size; updated.customPetSize = settings.customPetSize
             updated.customSizeShares = settings.customSizeShares; updated.movementMode = settings.movementMode
+            if activateAssignmentsOnApply { updated.characterMode = .custom }
             updated.reducedMotion = settings.reducedMotion; updated.showQuestionBubbles = settings.showQuestionBubbles
             do { try updated.saveChecked() }
             catch { errorLabel.stringValue = "Assignments saved. Cannot save size and behavior settings: " + error.localizedDescription; return }
-            preferences = updated
+            preferences = updated; activateAssignmentsOnApply = false; updateModeHint()
             let active = Set(scene.agents.compactMap(\.sessionKey))
             roles.agentOverrides = overrides.filter { active.contains($0.key) }
             roles.reload(); scene.apply(scene.agents); scene.wake(); restoreArea()

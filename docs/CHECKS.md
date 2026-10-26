@@ -36,12 +36,17 @@ A library root can be a Stow link. The scan must include folders without rules.
 
 ```sh
 ./bin/pets --demo --studio-preview /tmp/herdr-pets-studio
+./bin/pets --demo --studio-preview /tmp/herdr-pets-pools --stress-layout --check-picker
 ./bin/pets --broadway-demo --stage-preview /tmp/herdr-pets-stage
 ```
 
 The first command writes one native image for each Studio tab.
 The second writes a native stage image and question bubbles. Its questions are preview fixtures.
-Both commands exit after export. They do not save Studio edits or change live agents.
+These commands exit after export. They do not save Studio edits or change live agents.
+The pool check uses 60 long agent labels and a 900 by 600 pt window.
+It checks that Apply stays on screen. It selects two avatars through native button actions.
+It checks that the picker stays open and keeps the draft after Done. It also exports the picker.
+Use separate preview preferences with no saved broad-cell assignment for this check.
 Add `--custom-demo` to inspect installed custom art.
 Set `HERDR_PETS_DIR` to use a separate custom library.
 Set `HERDR_PLUGIN_CONFIG_DIR` to use separate preview preferences.
@@ -58,7 +63,7 @@ A preview is an AppKit render with simulated movement time. It does not prove a 
 
 Use the menu panel to open Studio if you close the window.
 
-1. Drag a palette pet into a grid cell. Check the same choice through its cell menu.
+1. Drag two palette pets into a grid tile. Both avatars must appear. Click the tile to add or remove members in the picker.
 2. Change an assignment and cancel. Reopen Studio. The saved choice must remain.
 3. Apply a choice in Custom mode. The affected pet must change without changing its agent identity.
 4. Change a custom size share. Compare the preview and desktop result. Check Reset.
