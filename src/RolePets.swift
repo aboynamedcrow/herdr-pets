@@ -8,7 +8,7 @@ enum PetCharacter: Equatable {
 }
 
 func roleWord(_ label: String?) -> String? {
-    guard var words = label?.split(whereSeparator: { $0.isWhitespace }), !words.isEmpty else { return nil }
+    guard var words = label?.split(maxSplits: 2, whereSeparator: { $0.isWhitespace }), !words.isEmpty else { return nil }
     // A dispatch label can have one marker before its role.
     if words[0].unicodeScalars.contains(where: { $0.properties.isEmojiPresentation || ($0.properties.isEmoji && $0.value > 127) }) {
         words.removeFirst()

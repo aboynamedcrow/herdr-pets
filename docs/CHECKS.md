@@ -85,6 +85,12 @@ When that agent resumes, its bubble must disappear.
 A missing or changed session must not open a different agent.
 Record native checks separately from synthetic fixtures and source inspection.
 
+Collapsed bubbles show a short question preview. Expand one to see the latest question and choices.
+The reader prefers the final visible question. For other formats, it uses a bounded recent paragraph or option group.
+It does not read the full provider conversation. Native question extraction remains a heuristic over visible terminal text.
+On 2026-10-25, native probes checked Codex and Claude prompt samples, wrapped borders, and an option group without a question mark.
+The probes also rendered three bubbles. The two collapsed bubbles showed the question.
+
 ## Repair limit
 
 Classify a failure as a product defect, documentation drift, or a verification gap.

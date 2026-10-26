@@ -2,10 +2,10 @@ import Foundation
 import Darwin
 
 // Each call has a byte limit and a wall-clock limit, including pipe reads.
-func boundedHerdrData(_ arguments: [String], limit: Int = 65_536, timeout: Double = 2) -> Data? {
+func boundedCommandData(_ arguments: [String], limit: Int = 65_536, timeout: Double = 2) -> Data? {
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-    process.arguments = [ProcessInfo.processInfo.environment["HERDR_BIN_PATH"] ?? "herdr"] + arguments
+    process.arguments = arguments
     let pipe = Pipe()
     process.standardOutput = pipe; process.standardError = FileHandle.nullDevice
     let exited = DispatchSemaphore(value: 0)
@@ -37,7 +37,67 @@ func boundedHerdrData(_ arguments: [String], limit: Int = 65_536, timeout: Doubl
     return bytes
 }
 
+func boundedHerdrData(_ arguments: [String], limit: Int = 65_536, timeout: Double = 2) -> Data? {
+    boundedCommandData([ProcessInfo.processInfo.environment["HERDR_BIN_PATH"] ?? "herdr"] + arguments, limit: limit, timeout: timeout)
+}
+
 func machineArguments(_ agent: Agent) -> [String] { agent.machine == "local" ? [] : ["--machine", agent.machine] }
+
+// Visible terminal output is not a conversation API. Prefer its last question and choices.
+func latestAttentionText(_ raw: String) -> String? {
+    let plain = raw.replacingOccurrences(of: "\u{001B}\\[[0-?]*[ -/]*[@-~]", with: "", options: .regularExpression)
+    let borders = CharacterSet(charactersIn: " │┃║\t\r")
+    var lines = plain.components(separatedBy: "\n").map { $0.trimmingCharacters(in: borders) }.filter { line in
+        if !line.isEmpty, line.unicodeScalars.allSatisfy({ CharacterSet.whitespaces.contains($0) || (0x2500...0x257F).contains($0.value) }) { return false }
+        let lower = line.lowercased()
+        if line.contains("?"), !lower.hasPrefix("? for shortcuts") { return true }
+        if line.range(of: "^[❯›>●○ ]*\\d+[.)]\\s", options: .regularExpression) != nil { return true }
+        if (lower.hasPrefix("gpt-") || lower.hasPrefix("hi ·")), lower.contains("context") { return false }
+        return !["esc to", "enter to select", "enter to confirm", "shift+tab", "bypass permissions", "? for shortcuts"].contains(where: lower.contains)
+    }
+    while lines.last?.trimmingCharacters(in: .whitespaces).isEmpty == true { lines.removeLast() }
+    guard !lines.isEmpty else { return nil }
+    func option(_ line: String) -> Bool { line.range(of: "^[❯›>●○ ]*\\d+[.)]\\s", options: .regularExpression) != nil }
+    let lastOption = lines.lastIndex(where: option)
+    let lastTurn = lines.indices.last { (lines[$0].hasPrefix("• ") || lines[$0].hasPrefix("⏺ ") || lines[$0].hasPrefix("› ") || lines[$0].hasPrefix("❯ ")) && !option(lines[$0]) }
+    let question = lines.indices.last { lines[$0].contains("?") && !option(lines[$0]) && $0 >= (lastTurn ?? 0) && (lastOption == nil || $0 >= lastOption! - 18) }
+    var start = question ?? max(0, lines.count - 10)
+    if let question {
+        while start > max(0, question - 3), !lines[start - 1].isEmpty, !option(lines[start - 1]),
+              !lines[start - 1].hasPrefix("›"), !lines[start - 1].hasPrefix("❯"), !lines[start - 1].hasPrefix("⏺"), !lines[start - 1].hasPrefix("•") { start -= 1 }
+    } else if let lastOption {
+        var first = lastOption
+        while let previous = lines[..<first].lastIndex(where: option), lines[(previous + 1)..<first].allSatisfy({ $0.isEmpty }) { first = previous }
+        start = first
+        while start > max(0, first - 6), lines[start - 1].isEmpty { start -= 1 }
+        while start > max(0, first - 6), !lines[start - 1].isEmpty, !option(lines[start - 1]) { start -= 1 }
+    } else {
+        if let turn = lastTurn { start = max(start, turn) }
+        if let paragraph = lines.indices.last(where: { lines[$0].isEmpty }) { start = max(start, paragraph + 1) }
+    }
+    let excerpt = lines.dropFirst(start).prefix(18).joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !excerpt.isEmpty else { return nil }
+    return excerpt.count > 1600 ? String(excerpt.prefix(1600)) + "\n… Open the agent for more." : excerpt
+}
+
+func attentionQuestionPreview(_ text: String) -> String {
+    let lines = text.components(separatedBy: "\n")
+    let question = lines.lastIndex { $0.contains("?") && $0.range(of: "^[❯›>●○ ]*\\d+[.)]\\s", options: .regularExpression) == nil }
+    var start = question ?? lines.firstIndex(where: { !$0.isEmpty }) ?? 0
+    if let question {
+        while start > max(0, question - 2), !lines[start - 1].isEmpty,
+              lines[start - 1].range(of: "^[❯›>●○ ]*\\d+[.)]\\s", options: .regularExpression) == nil,
+              !lines[start - 1].hasPrefix("• "), !lines[start - 1].hasPrefix("⏺ ") { start -= 1 }
+    }
+    let value = lines[start...(question ?? start)].filter { !$0.isEmpty }.joined(separator: " ")
+    if value.isEmpty { return "Waiting for a question. Open the agent." }
+    if value.count <= 180 { return value }
+    if let question {
+        let questionLine = lines[question]
+        return questionLine.count > 180 ? String(questionLine.prefix(177)) + "…" : questionLine
+    }
+    return String(value.prefix(177)) + "…"
+}
 
 typealias PaneFetcher = ([String], Int) -> Data?
 
@@ -60,22 +120,50 @@ func readBlockedText(_ agent: Agent, fetch: PaneFetcher = { boundedHerdrData($0,
           before.revision == after.revision else { return nil }
     // The daemon owns tokens.attention. See docs/ATTENTION.md for its contract.
     guard let data, let text = String(data: data, encoding: .utf8),
-          !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+          let excerpt = latestAttentionText(text) else {
         let attention = after.tokens?["attention"]?.trimmingCharacters(in: .whitespacesAndNewlines)
         return attention?.isEmpty == false ? attention : nil
     }
-    var lines = text.components(separatedBy: "\n")
-    while lines.first?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true { lines.removeFirst() }
-    while lines.last?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true { lines.removeLast() }
-    return lines.joined(separator: "\n")
+    return excerpt
 }
 
 func focusPetAgent(_ agent: Agent, complete: @escaping (Bool) -> Void) {
     DispatchQueue.global().async {
         let valid = currentPane(agent) != nil
-        let result = valid && agent.pane_id.map { boundedHerdrData(machineArguments(agent) + ["agent", "focus", $0]) != nil } == true
+        let focused = valid && agent.pane_id.map { boundedHerdrData(machineArguments(agent) + ["agent", "focus", $0]) != nil } == true
+        let result = focused && (agent.machine == "local" || (currentPane(agent) != nil && openRemoteHerdrWindow(machine: agent.machine)))
         DispatchQueue.main.async { complete(result) }
     }
+}
+
+// CLI focus changes the remote server. A fresh client must attach to that same host and session.
+func openRemoteHerdrWindow(machine: String) -> Bool {
+    struct Profile: Decodable { let id: String; let target: String; let session: String; let enabled: Bool }
+    guard machine != "local", let data = boundedHerdrData(["machine", "list", "--json"]),
+          let profiles = try? JSONDecoder().decode([Profile].self, from: data),
+          let profile = profiles.first(where: { $0.id == machine && $0.enabled }), !profile.target.isEmpty, !profile.session.isEmpty else { return false }
+    let executable = ProcessInfo.processInfo.environment["HERDR_BIN_PATH"] ?? "herdr"
+    let paths = executable.contains("/") ? [executable] : (ProcessInfo.processInfo.environment["PATH"] ?? "").components(separatedBy: ":").map { $0 + "/" + executable }
+    let directory = FileManager.default.currentDirectoryPath
+    guard let binary = paths.map({ $0.hasPrefix("/") ? $0 : directory + "/" + $0 })
+        .map({ URL(fileURLWithPath: $0).standardizedFileURL.path })
+        .first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else { return false }
+    func quote(_ value: String) -> String { "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'" }
+    let command = "exec \(quote(binary)) --remote \(quote(profile.target)) --session \(quote(profile.session))"
+    let script = """
+    on run argv
+        tell application "Ghostty"
+            set cfg to new surface configuration
+            set initial input of cfg to (item 1 of argv) & linefeed
+            set w to new window with configuration cfg
+            activate window w
+            return id of w
+        end tell
+    end run
+    """
+    guard let data = boundedCommandData(["/usr/bin/osascript", "-e", script, "--", command], timeout: 5),
+          let windowID = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) else { return false }
+    return !windowID.isEmpty
 }
 
 final class BlockedTextPoller {
