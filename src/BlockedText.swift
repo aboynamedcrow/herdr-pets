@@ -79,7 +79,9 @@ func attentionQuestionPreview(_ text: String) -> String {
     let question = lines.lastIndex { $0.contains("?") && $0.range(of: "^[❯›>●○ ]*\\d+[.)]\\s", options: .regularExpression) == nil } ?? 0
     let paragraph = lines.prefix(question + 1).filter { !$0.isEmpty }.joined(separator: " ")
     let value = paragraph.isEmpty ? "Waiting for a question. Open the agent." : paragraph
-    return value.count > 180 ? String(value.prefix(177)) + "…" : value
+    if value.count <= 180 { return value }
+    let questionLine = lines[question]
+    return questionLine.count > 180 ? String(questionLine.prefix(177)) + "…" : questionLine
 }
 
 typealias PaneFetcher = ([String], Int) -> Data?
