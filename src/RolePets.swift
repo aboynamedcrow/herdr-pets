@@ -278,8 +278,8 @@ final class RolePets {
                 let available = cell.pets.filter { token in
                     if token == "agent" || token == "generic" { return true }
                     if token.hasPrefix("builtin:") { return PetKind(rawValue: String(token.dropFirst(8))) != nil }
-                    let id = token.hasPrefix("custom:") ? String(token.dropFirst(7)) : token
-                    return cache[id]?.pet != nil || PetKind(rawValue: id) != nil
+                    if token.hasPrefix("custom:") { return cache[String(token.dropFirst(7))]?.pet != nil }
+                    return cache[token]?.pet != nil || PetKind(rawValue: token) != nil
                 }
                 guard let selected = available.max(by: { score($0, key: pane.id) < score($1, key: pane.id) }) else { return .builtin(fallback) }
                 return resolve(selected, for: pane)

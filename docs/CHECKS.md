@@ -41,7 +41,7 @@ A library root can be a Stow link. The scan must include folders without rules.
 ```
 
 The first command writes one native image for each Studio tab.
-The second writes a native stage image and question bubbles. Its questions are preview fixtures.
+The third writes a native stage image and question bubbles. Its questions are preview fixtures.
 These commands exit after export. They do not save Studio edits or change live agents.
 The pool check uses 60 long agent labels and a 900 by 600 pt window.
 It checks that Apply stays on screen. It selects two avatars through native button actions.
