@@ -274,7 +274,16 @@ final class RolePets {
             return .builtin(PetKind(rawValue: String(winner.dropFirst(8)))!)
         case .custom:
             if let key = pane.sessionKey, let pet = agentOverrides[key] { return resolve(pet, for: pane) }
-            if let cell = AssignmentStore.winner(for: pane, document: assignments.document, home: home) { return resolve(cell.pet, for: pane) }
+            if let cell = AssignmentStore.winner(for: pane, document: assignments.document, home: home) {
+                let available = cell.pets.filter { token in
+                    if token == "agent" || token == "generic" { return true }
+                    if token.hasPrefix("builtin:") { return PetKind(rawValue: String(token.dropFirst(8))) != nil }
+                    if token.hasPrefix("custom:") { return cache[String(token.dropFirst(7))]?.pet != nil }
+                    return cache[token]?.pet != nil || PetKind(rawValue: token) != nil
+                }
+                guard let selected = available.max(by: { score($0, key: pane.id) < score($1, key: pane.id) }) else { return .builtin(fallback) }
+                return resolve(selected, for: pane)
+            }
             return chooseCharacter(pane, rules: rules, home: home, fallback: fallback) { id in
                 guard let cached = self.cache[id] else { return nil }
                 if cached.pet != nil { return .custom(id, cached.revision) }
@@ -312,7 +321,7 @@ final class RolePets {
                 else if cache[rule.pet]?.pet != nil { custom.insert(rule.pet) }
                 else if cache[rule.pet]?.folder.date == nil, let kind = PetKind(rawValue: rule.pet) { builtin.insert(kind) }
             }
-            for token in assignments.document.cells.map(\.pet) + Array(agentOverrides.values) {
+            for token in assignments.document.cells.flatMap(\.pets) + Array(agentOverrides.values) {
                 if token == "generic" { builtin.formUnion(PetKind.generic); continue }
                 if token.hasPrefix("builtin:"), let kind = PetKind(rawValue: String(token.dropFirst(8))) { builtin.insert(kind); continue }
                 let id = token.hasPrefix("custom:") ? String(token.dropFirst(7)) : token

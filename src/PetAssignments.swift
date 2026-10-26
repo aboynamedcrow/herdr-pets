@@ -4,7 +4,39 @@ struct GridAssignment: Codable, Equatable {
     var repository: String
     var role: String
     var agentType: String
-    var pet: String
+    var pets: [String]
+    var pet: String {
+        get { pets.first ?? "" }
+        set { pets = [newValue] }
+    }
+
+    init(repository: String, role: String, agentType: String, pet: String) {
+        self.init(repository: repository, role: role, agentType: agentType, pets: [pet])
+    }
+
+    init(repository: String, role: String, agentType: String, pets: [String]) {
+        self.repository = repository; self.role = role; self.agentType = agentType; self.pets = pets
+    }
+
+    private enum CodingKeys: String, CodingKey { case repository, role, agentType, pet, pets }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        repository = try c.decode(String.self, forKey: .repository)
+        role = try c.decode(String.self, forKey: .role)
+        agentType = try c.decode(String.self, forKey: .agentType)
+        let first = try c.decode(String.self, forKey: .pet)
+        pets = try c.decodeIfPresent([String].self, forKey: .pets) ?? [first]
+        guard pets.first == first else {
+            throw DecodingError.dataCorruptedError(forKey: .pets, in: c, debugDescription: "The pool must start with the legacy pet.")
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(repository, forKey: .repository); try c.encode(role, forKey: .role)
+        try c.encode(agentType, forKey: .agentType); try c.encode(pet, forKey: .pet)
+        if pets.count > 1 { try c.encode(pets, forKey: .pets) }
+    }
 }
 
 struct AssignmentDocument: Codable, Equatable {
@@ -14,8 +46,14 @@ struct AssignmentDocument: Codable, Equatable {
     var cells: [GridAssignment] = []
 
     mutating func set(_ pet: String?, repository: String, role: String, agentType: String) {
-        cells.removeAll { $0.repository == repository && $0.role == role && $0.agentType == agentType }
-        if let pet { cells.append(GridAssignment(repository: repository, role: role, agentType: agentType, pet: pet)) }
+        setPool(pet.map { [$0] } ?? [], repository: repository, role: role, agentType: agentType)
+    }
+
+    mutating func setPool(_ pets: [String], repository: String, role: String, agentType: String) {
+        cells.removeAll { AssignmentStore.prefix($0.repository, home: NSHomeDirectory()) == AssignmentStore.prefix(repository, home: NSHomeDirectory()) && $0.role == role && $0.agentType == agentType }
+        var seen: Set<String> = []
+        let unique = pets.filter { seen.insert($0).inserted }
+        if !unique.isEmpty { cells.append(GridAssignment(repository: repository, role: role, agentType: agentType, pets: unique)) }
     }
 }
 
@@ -94,7 +132,7 @@ final class AssignmentStore {
             let path = Self.prefix(cell.repository, home: NSHomeDirectory())
             let values = [path, cell.role.lowercased(), cell.agentType.lowercased()]
             let key = values.map { "\($0.utf8.count):\($0)" }.joined()
-            guard keys.insert(key).inserted, !cell.pet.isEmpty,
+            guard keys.insert(key).inserted, !cell.pets.isEmpty, cell.pets.allSatisfy({ !$0.isEmpty }), Set(cell.pets).count == cell.pets.count,
                   cell.repository.isEmpty || cell.repository.hasPrefix("/") || cell.repository == "~" || cell.repository.hasPrefix("~/") else {
                 throw AssignmentError.invalid
             }

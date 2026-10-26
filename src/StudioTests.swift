@@ -1,6 +1,7 @@
 import AppKit
 
 func studioSelfTest() {
+    poolAssignmentSelfTest()
     for mode in ["home", "broadway"] {
         for visible in [false, true] {
             let data = try! JSONSerialization.data(withJSONObject: ["movementMode": mode, "showQuestionBubbles": visible])
@@ -80,6 +81,22 @@ func studioSelfTest() {
     print("PASS: Broadway screen-edge approach, large-art margins, edge turns, and Reduce Motion")
     blockedTextSelfTest()
     _ = NSApplication.shared
+    let options = [AvatarChoice(token: "builtin:cat", name: "Cat", image: Sprites.thumbnail(.cat)), AvatarChoice(token: "builtin:robot", name: "Robot", image: Sprites.thumbnail(.robot))]
+    let tile = AvatarAssignmentTile(choices: options, selection: [], inherited: options)
+    var dropped: [String] = []
+    tile.choose = { dropped = $0 }
+    let board = NSPasteboard.withUniqueName()
+    defer { board.releaseGlobally() }
+    let dragType = NSPasteboard.PasteboardType("dev.herdr-pets.character")
+    board.declareTypes([dragType], owner: nil)
+    board.setString("builtin:cat", forType: dragType)
+    precondition(tile.acceptDrop(from: board) && dropped == ["builtin:cat"])
+    precondition(tile.acceptDrop(from: board) && dropped == ["builtin:cat"])
+    board.setString("builtin:robot", forType: dragType)
+    precondition(tile.acceptDrop(from: board) && dropped == ["builtin:cat", "builtin:robot"])
+    board.setString("custom:unknown", forType: dragType)
+    precondition(!tile.acceptDrop(from: board) && dropped == ["builtin:cat", "builtin:robot"])
+    print("PASS: Real pasteboard drops start a pool, add a member, deduplicate, and reject unknown art")
     let picker = AssignmentCell(frame: .zero, pullsDown: false)
     picker.addItems(withTitles: ["Use grid and rules", "Cat"])
     picker.tokens = [nil, "builtin:cat"]
@@ -282,4 +299,68 @@ private func reviewRegressionSelfTest(_ sample: CustomPet) {
         exit(1)
     }
     print("PASS: Large home pets reach edges, backup survives restart, and slow reads do not starve waiting panes")
+}
+
+func poolAssignmentSelfTest() {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try! FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let file = folder.appendingPathComponent("assignments.json")
+    let data = Data("{\"version\":1,\"repositories\":[],\"roles\":[],\"cells\":[{\"repository\":\"\",\"role\":\"\",\"agentType\":\"codex\",\"pet\":\"builtin:cat\",\"pets\":[\"builtin:cat\",\"builtin:robot\"]}]}".utf8)
+    try! data.write(to: file)
+    let catalog = RolePets(directory: folder, log: { _ in })
+    catalog.reload()
+    let agents = (0..<100).map { Agent(terminal_id: "pool-\($0)", agent_status: "working", agent: "codex") }
+    let choices = agents.map { catalog.character(for: $0, mode: .custom) }
+    if !choices.contains(.builtin(.cat)) || !choices.contains(.builtin(.robot)) {
+        FileHandle.standardError.write(Data("FAIL: A rule pool must select from both configured pets.\n".utf8))
+        exit(1)
+    }
+    precondition(zip(agents, choices).allSatisfy { catalog.character(for: $0.0, mode: .custom) == $0.1 })
+    precondition(choices.allSatisfy { $0 == .builtin(.cat) || $0 == .builtin(.robot) })
+    let encoded = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(catalog.assignments.document)) as! [String: Any]
+    let cells = encoded["cells"] as! [[String: Any]]
+    precondition(cells[0]["pet"] as? String == "builtin:cat")
+    precondition(cells[0]["pets"] as? [String] == ["builtin:cat", "builtin:robot"])
+    func savePool(_ tokens: [String]) {
+        var doc = catalog.assignments.document
+        doc.setPool(tokens, repository: "", role: "", agentType: "codex")
+        try! catalog.assignments.save(doc, expected: catalog.assignments.snapshot)
+        catalog.reload()
+    }
+    savePool(["builtin:robot", "builtin:cat"])
+    precondition(zip(agents, choices).allSatisfy { catalog.character(for: $0.0, mode: .custom) == $0.1 })
+    savePool(["builtin:cat", "builtin:robot", "builtin:star"])
+    let added = agents.map { catalog.character(for: $0, mode: .custom) }
+    precondition(zip(choices, added).allSatisfy { $0.0 == $0.1 || $0.1 == .builtin(.star) })
+    precondition(added.contains(.builtin(.star)))
+    savePool(["builtin:cat", "builtin:star"])
+    precondition(zip(agents, added).allSatisfy {
+        $0.1 == .builtin(.robot) || catalog.character(for: $0.0, mode: .custom) == $0.1
+    })
+    savePool(["custom:missing", "builtin:cat"])
+    precondition(agents.allSatisfy { catalog.character(for: $0, mode: .custom) == .builtin(.cat) })
+    savePool(["builtin:cat", "builtin:robot", "builtin:cat"])
+    precondition(catalog.assignments.document.cells[0].pets == ["builtin:cat", "builtin:robot"])
+    precondition(catalog.possible(mode: .custom, agents: []).builtin.isSuperset(of: [.cat, .robot]))
+    var invalid = catalog.assignments.document
+    invalid.cells[0].pets = ["builtin:cat", "builtin:cat"]
+    let beforeInvalid = try! Data(contentsOf: file)
+    do { try catalog.assignments.save(invalid, expected: catalog.assignments.snapshot); fatalError("Duplicate raw pool accepted") }
+    catch AssignmentError.invalid {} catch { fatalError("Unexpected pool save error") }
+    precondition((try! Data(contentsOf: file)) == beforeInvalid)
+    var old = try! JSONSerialization.jsonObject(with: data) as! [String: Any]
+    var oldCell = (old["cells"] as! [[String: Any]])[0]; oldCell.removeValue(forKey: "pets"); old["cells"] = [oldCell]
+    try! JSONSerialization.data(withJSONObject: old).write(to: file)
+    catalog.reload()
+    precondition(catalog.assignments.document.cells[0].pets == ["builtin:cat"])
+    precondition(agents.allSatisfy { catalog.character(for: $0, mode: .custom) == .builtin(.cat) })
+    savePool([])
+    precondition(catalog.assignments.document.cells.isEmpty)
+    precondition(catalog.character(for: agents[0], mode: .custom) == .builtin(.codex))
+    var aliases = AssignmentDocument()
+    aliases.setPool(["builtin:cat"], repository: "~/pool-project/", role: "", agentType: "codex")
+    aliases.setPool(["builtin:robot"], repository: NSHomeDirectory() + "/pool-project", role: "", agentType: "codex")
+    precondition(aliases.cells.count == 1 && aliases.cells[0].pets == ["builtin:robot"])
+    print("PASS: Rule pool distribution, stable picks, allowed members, and legacy first pet")
 }

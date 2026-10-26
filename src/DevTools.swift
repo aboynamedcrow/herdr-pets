@@ -351,3 +351,66 @@ private func machineSelfTest() {
     precondition(!saved.otherMachines && saved.size == 32)
     print("PASS: machines 8/8 preference default and persistence")
 }
+
+// Large labels reproduce the Studio selection layout failure without live data.
+func studioPreviewAgents() -> [Agent] {
+    guard arguments.contains("--stress-layout") else { return demoAgents() }
+    return (0..<60).map { index in
+        Agent(terminal_id: "layout-\(index)", agent_status: "working", agent: index % 2 == 0 ? "claude" : "codex",
+              label: "Reviewer \(index) " + String(repeating: "A long task description for the layout check ", count: 8),
+              cwd: "/workspace/project-\(index % 4)")
+    }
+}
+
+func checkStudioSelectionLayout() throws {
+    guard let window = NSApp.windows.first(where: { $0.title == "Pet Studio" }), let content = window.contentView,
+          let screen = window.screen ?? NSScreen.main else { throw CocoaError(.coderValueNotFound) }
+    window.setContentSize(CGSize(width: 900, height: 600))
+    window.setFrameOrigin(CGPoint(x: screen.visibleFrame.minX + 20, y: screen.visibleFrame.minY + 20))
+    func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
+    let controls = descendants(content)
+    guard let cell = controls.compactMap({ $0 as? AvatarAssignmentTile }).first(where: { ($0.accessibilityLabel() ?? "").hasPrefix("All repositories, All roles, All types:") }),
+          let apply = controls.compactMap({ $0 as? NSButton }).first(where: { $0.title == "Apply" }) else { throw CocoaError(.coderValueNotFound) }
+    cell.inspect?()
+    content.layoutSubtreeIfNeeded()
+    let footer = window.convertToScreen(apply.convert(apply.bounds, to: nil))
+    let visible = screen.visibleFrame.insetBy(dx: -1, dy: -1)
+    let summary = controls.compactMap { $0 as? NSTextField }.first { $0.stringValue.hasPrefix("Precedence:") || $0.identifier?.rawValue == "selected-rule-summary" }
+    print("Layout check: summary height \(summary?.frame.height ?? -1), text length \(summary?.stringValue.count ?? -1)")
+    guard let summary, summary.frame.height <= 56, visible.contains(footer), window.frame.width <= visible.width, window.frame.height <= visible.height else {
+        throw NSError(domain: "StudioPreview", code: 1, userInfo: [NSLocalizedDescriptionKey: "A selected rule grew beyond its summary area or moved controls outside the screen."])
+    }
+    print("PASS: Selected broad rule with 60 long agent labels keeps Apply on screen")
+}
+
+func checkStudioPoolPicker(to directory: URL) throws {
+    func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
+    func broadTile() -> AvatarAssignmentTile? {
+        NSApp.windows.filter { $0.title == "Pet Studio" }.compactMap(\.contentView).flatMap(descendants)
+            .compactMap { $0 as? AvatarAssignmentTile }.first { ($0.accessibilityLabel() ?? "").hasPrefix("All repositories, All roles, All types:") }
+    }
+    guard let tile = broadTile(), tile.selection.isEmpty else { throw CocoaError(.coderInvalidValue) }
+    tile.performClick(nil)
+    guard let picker = NSApp.windows.compactMap(\.contentView).flatMap(descendants).first(where: { $0.identifier?.rawValue == "avatar-pool-picker" }) else {
+        throw CocoaError(.coderValueNotFound)
+    }
+    for token in ["builtin:cat", "builtin:robot"] {
+        guard let button = descendants(picker).compactMap({ $0 as? NSButton }).first(where: { $0.identifier?.rawValue == "pet-choice:" + token }) else { throw CocoaError(.coderValueNotFound) }
+        button.performClick(nil)
+        guard tile.isEditing, tile.window != nil, tile.selection.contains(token) else { throw CocoaError(.coderInvalidValue) }
+    }
+    picker.layoutSubtreeIfNeeded()
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    guard let bitmap = picker.bitmapImageRepForCachingDisplay(in: picker.bounds) else { throw CocoaError(.coderInvalidValue) }
+    picker.effectiveAppearance.performAsCurrentDrawingAppearance { picker.cacheDisplay(in: picker.bounds, to: bitmap) }
+    try bitmap.representation(using: .png, properties: [:])?.write(to: directory.appendingPathComponent("avatar-picker.png"))
+    guard let done = descendants(picker).compactMap({ $0 as? NSButton }).first(where: { $0.title == "Done" }) else { throw CocoaError(.coderValueNotFound) }
+    var closed = false
+    let observer = NotificationCenter.default.addObserver(forName: NSPopover.didCloseNotification, object: nil, queue: .main) { _ in closed = true }
+    defer { NotificationCenter.default.removeObserver(observer) }
+    done.performClick(nil)
+    let deadline = Date().addingTimeInterval(5)
+    while !closed && Date() < deadline { RunLoop.current.run(mode: .default, before: deadline) }
+    guard closed, !tile.isEditing, broadTile()?.selection == ["builtin:cat", "builtin:robot"] else { throw CocoaError(.coderInvalidValue) }
+    print("PASS: Native picker keeps two selections open and retains the pool in the Studio draft after Done")
+}
