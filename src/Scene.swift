@@ -58,7 +58,7 @@ final class PetScene {
             if pet.setCharacter(displayed, frames: roles?.frames(for: displayed)) { changed = true }
             if pet.setStatus(agent.asleep ? "asleep" : agent.agent_status) { changed = true }
         }
-        let eligible = preferences.visible && preferences.movementMode == .broadway
+        let eligible = preferences.visible && preferences.showQuestionBubbles
         if demo {
             blockedTexts = Dictionary(uniqueKeysWithValues: agents.filter { $0.agent_status == "blocked" }.map { ($0.id, "Preview question: Should I apply these changes?\n1. Apply\n2. Keep the current version") })
         } else { blockedReader.update(eligible ? agents.filter { pets[$0.id] != nil } : []) }
@@ -124,7 +124,7 @@ final class PetScene {
         if timer?.timeInterval != 1 / fps { schedule(fps: fps) }
     }
     private func syncBubbles() {
-        guard preferences.visible && preferences.movementMode == .broadway else { bubbleManager?.hideAll(); return }
+        guard preferences.visible && preferences.showQuestionBubbles else { bubbleManager?.hideAll(); return }
         if bubbleManager == nil { bubbleManager = SpeechBubbles() }
         bubbleManager?.update(agents: agents, pets: pets, texts: blockedTexts, origin: screenOrigin, screen: walls.offsetBy(dx: screenOrigin.x, dy: screenOrigin.y))
     }
