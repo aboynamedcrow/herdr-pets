@@ -92,6 +92,10 @@ func attentionQuestionPreview(_ text: String) -> String {
     let value = lines[start...(question ?? start)].filter { !$0.isEmpty }.joined(separator: " ")
     if value.isEmpty { return "Waiting for a question. Open the agent." }
     if value.count <= 180 { return value }
+    if let question {
+        let questionLine = lines[question]
+        return questionLine.count > 180 ? String(questionLine.prefix(177)) + "…" : questionLine
+    }
     return String(value.prefix(177)) + "…"
 }
 
