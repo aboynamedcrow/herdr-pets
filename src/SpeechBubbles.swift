@@ -3,8 +3,11 @@ import AppKit
 func questionBubbleSize(text: String, title: String, expanded: Bool, screen: CGSize) -> CGSize {
     let available = CGSize(width: max(1, screen.width - 12), height: max(1, screen.height - 12))
     if !expanded {
-        let width = (title as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 13)]).width + 26
-        return CGSize(width: min(available.width, ceil(width)), height: min(available.height, 30))
+        let font = NSFont.systemFont(ofSize: 13)
+        let preview = attentionQuestionPreview(text)
+        let width = min(available.width, 340, max(160, ceil((preview as NSString).size(withAttributes: [.font: font]).width) + 26))
+        let measured = (preview as NSString).boundingRect(with: CGSize(width: max(1, width - 26), height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: [.font: font])
+        return CGSize(width: width, height: min(available.height, max(30, ceil(measured.height) + 14)))
     }
     let font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
     let lineWidth = text.components(separatedBy: "\n").map { ($0 as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
@@ -59,6 +62,8 @@ private final class SpeechBubble {
     let collapse: BubbleButton
     let scroll = NSScrollView()
     var expanded = false
+    private var needsContentLayout = true
+    private var sizeCache: (body: String, title: String, expanded: Bool, screen: CGSize, size: CGSize)?
 
     init(select: @escaping () -> Void, focus: @escaping () -> Void, minimize: @escaping () -> Void) {
         panel = NSPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -71,6 +76,9 @@ private final class SpeechBubble {
         background.wantsLayer = true; background.layer?.cornerRadius = 10
         panel.contentView = background
         compact = BubbleButton("Waiting for input", action: select)
+        compact.cell?.wraps = true; compact.cell?.usesSingleLineMode = false
+        compact.cell?.lineBreakMode = .byWordWrapping
+        compact.font = .systemFont(ofSize: 13)
         open = BubbleButton("Open agent", action: focus)
         collapse = BubbleButton("Collapse", action: minimize)
         header.font = .systemFont(ofSize: 11, weight: .semibold)
@@ -91,23 +99,41 @@ private final class SpeechBubble {
         for child in [compact, header, scroll, open, collapse] { background.addSubview(child) }
     }
 
-    func update(agent: Agent, content: String?, expanded: Bool) {
+    func update(agent: Agent, content: String?, expanded: Bool, error: String?) {
+        if self.expanded != expanded { needsContentLayout = true }
         self.expanded = expanded
-        let name = "\(agent.machine) · \(agent.label ?? agent.agent ?? "Agent")"
-        compact.title = "! " + name
-        compact.toolTip = content == nil ? "Waiting for input. Click to open the question." : "Click to read the terminal excerpt."
-        header.stringValue = (demo ? "Preview · " : content == nil ? "Waiting for input · " : "Terminal excerpt · ") + name
+        let name = "\(agent.machine) · \(String((agent.label ?? agent.agent ?? "Agent").prefix(70)))"
+        let preview = attentionQuestionPreview(content ?? "Waiting for a question. Open the agent.")
+        if compact.title != preview { compact.title = preview }
+        let tip = name + "\nClick to read the current question and choices."
+        if compact.toolTip != tip { compact.toolTip = tip }
+        let title = error ?? ((demo ? "Preview · " : content == nil ? "Waiting for input · " : "Latest terminal text · ") + name)
+        if header.stringValue != title { header.stringValue = title }
         if text.string != content ?? "Waiting for input. Open the agent to view its question." {
             text.string = content ?? "Waiting for input. Open the agent to view its question."
+            needsContentLayout = true
         }
-        open.isEnabled = agent.sessionKey != nil && agent.pane_id != nil
-        compact.isHidden = expanded
-        for child in [header, scroll, open, collapse] { child.isHidden = !expanded }
-        panel.contentView?.setAccessibilityLabel(header.stringValue)
+        let enabled = agent.sessionKey != nil && agent.pane_id != nil
+        if open.isEnabled != enabled { open.isEnabled = enabled }
+        if compact.isHidden != expanded { compact.isHidden = expanded }
+        for child in [header, scroll, open, collapse] where child.isHidden == expanded { child.isHidden = !expanded }
+        if panel.contentView?.accessibilityLabel() != title { panel.contentView?.setAccessibilityLabel(title) }
+    }
+
+    func preferredSize(body: String, title: String, screen: CGSize) -> CGSize {
+        if let saved = sizeCache, saved.body == body, saved.title == title, saved.expanded == expanded, saved.screen == screen { return saved.size }
+        let size = questionBubbleSize(text: body, title: title, expanded: expanded, screen: screen)
+        sizeCache = (body, title, expanded, screen, size)
+        return size
     }
 
     func layout(in rect: CGRect) {
-        panel.setFrame(rect, display: true)
+        let resized = panel.frame.size != rect.size
+        if panel.frame != rect {
+            if resized { panel.setFrame(rect, display: false) } else { panel.setFrameOrigin(rect.origin) }
+        }
+        guard resized || needsContentLayout else { return }
+        needsContentLayout = false
         let width = rect.width, height = rect.height
         compact.frame = CGRect(x: 0, y: 0, width: width, height: height)
         header.frame = CGRect(x: 10, y: height - 26, width: width - 20, height: 18)
@@ -144,16 +170,15 @@ final class SpeechBubbles {
             let id = agent.id, pet = pets[id]!
             let bubble = bubbles[id] ?? SpeechBubble(select: { [weak self] in self?.selected = id; self?.focusError = nil; scene.wake() }, focus: { [weak self] in self?.focus(id) }, minimize: { [weak self] in self?.selected = ""; scene.wake() })
             bubbles[id] = bubble
-            bubble.update(agent: agent, content: texts[id], expanded: id == selected)
-            if id == selected, let focusError { bubble.header.stringValue = focusError }
+            bubble.update(agent: agent, content: texts[id], expanded: id == selected, error: id == selected ? focusError : nil)
             let head = CGPoint(x: origin.x + pet.badge.position.x, y: origin.y + pet.badge.position.y)
             let body = texts[id] ?? "Waiting for input. Open the agent to view its question."
             let title = id == selected ? bubble.header.stringValue : bubble.compact.title
-            let size = questionBubbleSize(text: body, title: title, expanded: id == selected, screen: screen.size)
+            let size = bubble.preferredSize(body: body, title: title, screen: screen.size)
             let rect = bubbleRect(above: head, size: size, screen: screen, occupied: occupied)
             occupied.append(rect)
             bubble.layout(in: rect)
-            bubble.panel.orderFrontRegardless()
+            if !bubble.panel.isVisible { bubble.panel.orderFrontRegardless() }
         }
     }
 

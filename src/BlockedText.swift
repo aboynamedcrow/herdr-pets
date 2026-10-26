@@ -39,6 +39,49 @@ func boundedHerdrData(_ arguments: [String], limit: Int = 65_536, timeout: Doubl
 
 func machineArguments(_ agent: Agent) -> [String] { agent.machine == "local" ? [] : ["--machine", agent.machine] }
 
+// Visible terminal output is not a conversation API. Prefer its last question and choices.
+func latestAttentionText(_ raw: String) -> String? {
+    let plain = raw.replacingOccurrences(of: "\u{001B}\\[[0-?]*[ -/]*[@-~]", with: "", options: .regularExpression)
+    let borders = CharacterSet(charactersIn: " │┃║\t\r")
+    var lines = plain.components(separatedBy: "\n").map { $0.trimmingCharacters(in: borders) }.filter { line in
+        if !line.isEmpty, line.unicodeScalars.allSatisfy({ CharacterSet.whitespaces.contains($0) || (0x2500...0x257F).contains($0.value) }) { return false }
+        let lower = line.lowercased()
+        if (lower.hasPrefix("gpt-") || lower.hasPrefix("hi ·")), lower.contains("context") { return false }
+        return !["esc to", "enter to select", "enter to confirm", "shift+tab", "bypass permissions", "? for shortcuts"].contains(where: lower.contains)
+    }
+    while lines.last?.trimmingCharacters(in: .whitespaces).isEmpty == true { lines.removeLast() }
+    guard !lines.isEmpty else { return nil }
+    func option(_ line: String) -> Bool { line.range(of: "^[❯›>●○ ]*\\d+[.)]\\s", options: .regularExpression) != nil }
+    let lastOption = lines.lastIndex(where: option)
+    let lastTurn = lines.indices.last { (lines[$0].hasPrefix("• ") || lines[$0].hasPrefix("⏺ ") || lines[$0].hasPrefix("› ") || lines[$0].hasPrefix("❯ ")) && !option(lines[$0]) }
+    let question = lines.indices.last { lines[$0].contains("?") && !option(lines[$0]) && $0 >= (lastTurn ?? 0) && (lastOption == nil || $0 >= lastOption! - 18) }
+    var start = question ?? max(0, lines.count - 10)
+    if let question {
+        while start > max(0, question - 3), !lines[start - 1].isEmpty, !option(lines[start - 1]),
+              !lines[start - 1].hasPrefix("›"), !lines[start - 1].hasPrefix("❯"), !lines[start - 1].hasPrefix("⏺"), !lines[start - 1].hasPrefix("•") { start -= 1 }
+    } else if let lastOption {
+        var first = lastOption
+        while let previous = lines[..<first].lastIndex(where: option), lines[(previous + 1)..<first].allSatisfy({ $0.isEmpty }) { first = previous }
+        start = first
+        while start > max(0, first - 6), lines[start - 1].isEmpty { start -= 1 }
+        while start > max(0, first - 6), !lines[start - 1].isEmpty, !option(lines[start - 1]) { start -= 1 }
+    } else {
+        if let turn = lastTurn { start = max(start, turn) }
+        if let paragraph = lines.indices.last(where: { lines[$0].isEmpty }) { start = max(start, paragraph + 1) }
+    }
+    let excerpt = lines.dropFirst(start).prefix(18).joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !excerpt.isEmpty else { return nil }
+    return excerpt.count > 1600 ? String(excerpt.prefix(1600)) + "\n… Open the agent for more." : excerpt
+}
+
+func attentionQuestionPreview(_ text: String) -> String {
+    let lines = text.components(separatedBy: "\n")
+    let question = lines.lastIndex { $0.contains("?") && $0.range(of: "^[❯›>●○ ]*\\d+[.)]\\s", options: .regularExpression) == nil } ?? 0
+    let paragraph = lines.prefix(question + 1).filter { !$0.isEmpty }.joined(separator: " ")
+    let value = paragraph.isEmpty ? "Waiting for a question. Open the agent." : paragraph
+    return value.count > 180 ? String(value.prefix(177)) + "…" : value
+}
+
 typealias PaneFetcher = ([String], Int) -> Data?
 
 func currentPane(_ expected: Agent, fetch: PaneFetcher = { boundedHerdrData($0, limit: $1) }) -> Agent? {
@@ -64,10 +107,7 @@ func readBlockedText(_ agent: Agent, fetch: PaneFetcher = { boundedHerdrData($0,
         let attention = after.tokens?["attention"]?.trimmingCharacters(in: .whitespacesAndNewlines)
         return attention?.isEmpty == false ? attention : nil
     }
-    var lines = text.components(separatedBy: "\n")
-    while lines.first?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true { lines.removeFirst() }
-    while lines.last?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true { lines.removeLast() }
-    return lines.joined(separator: "\n")
+    return latestAttentionText(text)
 }
 
 func focusPetAgent(_ agent: Agent, complete: @escaping (Bool) -> Void) {

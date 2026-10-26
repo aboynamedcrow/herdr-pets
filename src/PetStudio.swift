@@ -351,14 +351,37 @@ final class PetStudio: NSObject, NSWindowDelegate, NSSearchFieldDelegate {
 
     private func refreshGrid() {
         let previous = (gridHost.subviews.first as? NSScrollView)?.contentView.bounds.origin
-        var rows: [[NSView]] = [[studioText("Repository / role")] + ([""] + knownRoles).map { studioText($0.isEmpty ? "All roles" : $0.capitalized) }]
-        for repository in repositories {
+        let paths = repositories, roles = knownRoles, types = knownTypes
+        struct Scenario: Hashable { let path: String; let role: String; let type: String }
+        var previews: [Scenario: Set<String>] = [:]
+        func inheritedChoices(repository: String, role: String, excludingCell: Bool) -> [String] {
+            var document = draft
+            if excludingCell { document.set(nil, repository: repository, role: role, agentType: agentType) }
+            var tokens: Set<String> = []
+            let scenarios = repository.isEmpty ? paths.filter { !$0.isEmpty } + ["/other"] : [repository] + paths.filter { $0.hasPrefix(repository + "/") }
+            for path in scenarios { for type in agentType.isEmpty ? types : [agentType] { for word in role.isEmpty ? roles + ["other"] : [role] {
+                let key = Scenario(path: path, role: word, type: type)
+                if !excludingCell, let saved = previews[key] { tokens.formUnion(saved); continue }
+                let agent = Agent(terminal_id: "preview", agent_status: "idle", agent: type, label: word, cwd: AssignmentStore.prefix(path, home: NSHomeDirectory()))
+                var choices: Set<String> = []
+                if let winner = AssignmentStore.winner(for: agent, document: document, home: NSHomeDirectory()) { choices.formUnion(winner.pets) }
+                else if let rule = self.roles.legacyRules.first(where: { $0.matches(agent, home: NSHomeDirectory()) }) {
+                    if rule.pet == "generic" { choices.formUnion(PetKind.generic.map { "builtin:" + $0.rawValue }) }
+                    else { switch self.roles.resolve(rule.pet, for: agent) { case .builtin(let kind): choices.insert("builtin:" + kind.rawValue); case .custom(let id, _): choices.insert("custom:" + id) } }
+                } else { choices.insert("builtin:" + petKind(ofType: type).rawValue) }
+                if !excludingCell { previews[key] = choices }
+                tokens.formUnion(choices)
+            } } }
+            return tokens.sorted()
+        }
+        var rows: [[NSView]] = [[studioText("Repository / role")] + ([""] + roles).map { studioText($0.isEmpty ? "All roles" : $0.capitalized) }]
+        for repository in paths {
             let title = repository.isEmpty ? "All repositories" : repository.replacingOccurrences(of: NSHomeDirectory(), with: "~", options: .anchored)
             let label = studioText(title); label.maximumNumberOfLines = 3; label.lineBreakMode = .byTruncatingMiddle; label.toolTip = repository
-            rows.append([label] + ([""] + knownRoles).map { role -> NSView in
+            rows.append([label] + ([""] + roles).map { role -> NSView in
                 let explicit = draft.cells.first { AssignmentStore.prefix($0.repository, home: NSHomeDirectory()) == repository && $0.role == role && $0.agentType == agentType }
-                let inherited = inheritedChoices(repository: repository, role: role).map(choice)
                 let selection = explicit?.pets ?? []
+                let inherited = inheritedChoices(repository: repository, role: role, excludingCell: explicit != nil).map(choice)
                 let options = entries.map { AvatarChoice(token: $0.token, name: $0.name, image: $0.image) } + selection.filter { token in !entries.contains { $0.token == token } }.map(choice)
                 let tile = AvatarAssignmentTile(choices: options, selection: selection, inherited: inherited)
                 tile.scopeLabel = role.isEmpty ? "All roles" : role.capitalized
@@ -391,22 +414,6 @@ final class PetStudio: NSObject, NSWindowDelegate, NSSearchFieldDelegate {
     }
 
     private func name(_ token: String) -> String { entries.first { $0.token == token }?.name ?? token }
-
-    private func inheritedChoices(repository: String, role: String) -> [String] {
-        var without = draft
-        without.set(nil, repository: repository, role: role, agentType: agentType)
-        var tokens: Set<String> = []
-        let paths = repository.isEmpty ? repositories.filter { !$0.isEmpty } + ["/other"] : [repository] + repositories.filter { $0.hasPrefix(repository + "/") }
-        for path in paths { for type in agentType.isEmpty ? knownTypes : [agentType] { for word in role.isEmpty ? knownRoles + ["other"] : [role] {
-            let agent = Agent(terminal_id: "preview", agent_status: "idle", agent: type, label: word, cwd: AssignmentStore.prefix(path, home: NSHomeDirectory()))
-            if let winner = AssignmentStore.winner(for: agent, document: without, home: NSHomeDirectory()) { tokens.formUnion(winner.pets) }
-            else if let rule = roles.legacyRules.first(where: { $0.matches(agent, home: NSHomeDirectory()) }) {
-                if rule.pet == "generic" { tokens.formUnion(PetKind.generic.map { "builtin:" + $0.rawValue }) }
-                else { switch roles.resolve(rule.pet, for: agent) { case .builtin(let kind): tokens.insert("builtin:" + kind.rawValue); case .custom(let id, _): tokens.insert("custom:" + id) } }
-            } else { tokens.insert("builtin:" + petKind(ofType: type).rawValue) }
-        } } }
-        return tokens.sorted()
-    }
 
     private func describe(repository: String, role: String) {
         let rule = PetRule(role: role.isEmpty ? nil : [role], agent: agentType.isEmpty ? nil : [agentType], cwd: repository.isEmpty ? nil : [repository], pet: "")
