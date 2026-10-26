@@ -40,16 +40,36 @@ func setReducedMotion(_ on: Bool) {
     settingsChanged()
 }
 
-// Saves the combination, takes it from any other action, and registers all shortcuts again.
-// Returns false when macOS or another app already holds the combination.
+// Registers the combination, takes it from any other action, and saves it. Returns an error message, or nil on success.
+// macOS shortcuts are refused. A combination that another app holds cannot be detected: Carbon registers it in both apps.
 @discardableResult
-func setShortcut(_ action: ShortcutAction, _ shortcut: Shortcut?) -> Bool {
+func setShortcut(_ action: ShortcutAction, _ shortcut: Shortcut?) -> String? {
+    if let shortcut, macOSUses(shortcut) { return "macOS uses \(shortcut.title)." }
+    let previous = preferences.shortcuts
     if let shortcut { preferences.shortcuts = preferences.shortcuts.filter { $0.value != shortcut } }
     preferences.shortcuts[action.rawValue] = shortcut
-    preferences.save()
     hotkeys.register()
+    var message: String?
+    if hotkeys.failed.contains(action) {
+        message = "Cannot register \(shortcut?.title ?? "")."
+        preferences.shortcuts = previous
+        hotkeys.register()
+    }
+    preferences.save()
     settingsChanged()
-    return !hotkeys.failed.contains(action)
+    return message
+}
+
+// Enabled macOS keyboard shortcuts, for example ⌘Space for Spotlight. Carbon would register these with no error.
+func macOSUses(_ shortcut: Shortcut) -> Bool {
+    var list: Unmanaged<CFArray>?
+    guard CopySymbolicHotKeys(&list) == noErr, let entries = list?.takeRetainedValue() as? [[String: Any]] else { return false }
+    let modifiers = carbonModifiers(shortcut.modifiers)
+    return entries.contains { entry in
+        (entry[kHISymbolicHotKeyEnabled as String] as? Bool ?? false)
+            && (entry[kHISymbolicHotKeyCode as String] as? Int).map(UInt32.init) == shortcut.keyCode
+            && (entry[kHISymbolicHotKeyModifiers as String] as? Int).map { UInt32($0) & UInt32(cmdKey | optionKey | controlKey | shiftKey) } == modifiers
+    }
 }
 
 // Moves the home area to the next monitor at the same place: the same offsets and the same flush edges.
@@ -86,9 +106,12 @@ extension ShortcutAction {
 // Carbon hot keys need no Accessibility permission. A Karabiner hyper key arrives as ⌃⌥⇧⌘ plus the key.
 final class Hotkeys {
     private var registered: [EventHotKeyRef] = []
+    private var installed = false
     private(set) var failed: Set<ShortcutAction> = []
 
+    // Only the live instance installs. Demo and preview processes record shortcuts but do not take the keys.
     func install() {
+        installed = true
         var pressed = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
         InstallEventHandler(GetApplicationEventTarget(), { _, event, _ in
             var id = EventHotKeyID()
@@ -99,10 +122,16 @@ final class Hotkeys {
         register()
     }
 
-    func register() {
+    // While Studio records a combination, a registered hot key would take the press first.
+    func suspend() {
         registered.forEach { UnregisterEventHotKey($0) }
         registered = []
+    }
+
+    func register() {
+        suspend()
         failed = []
+        guard installed else { return }
         for (index, action) in ShortcutAction.allCases.enumerated() {
             guard let shortcut = preferences.shortcuts[action.rawValue] else { continue }
             var ref: EventHotKeyRef?
@@ -113,11 +142,12 @@ final class Hotkeys {
         }
     }
 
-    private func carbonModifiers(_ raw: UInt) -> UInt32 {
-        let flags = NSEvent.ModifierFlags(rawValue: raw)
-        return [(NSEvent.ModifierFlags.command, cmdKey), (.option, optionKey), (.control, controlKey), (.shift, shiftKey)]
-            .filter { flags.contains($0.0) }.reduce(0) { $0 | UInt32($1.1) }
-    }
+}
+
+private func carbonModifiers(_ raw: UInt) -> UInt32 {
+    let flags = NSEvent.ModifierFlags(rawValue: raw)
+    return [(NSEvent.ModifierFlags.command, cmdKey), (.option, optionKey), (.control, controlKey), (.shift, shiftKey)]
+        .filter { flags.contains($0.0) }.reduce(0) { $0 | UInt32($1.1) }
 }
 
 private let namedKeys: [Int: String] = [

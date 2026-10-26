@@ -558,11 +558,12 @@ private final class ShortcutRecorder: NSButton {
     @objc private func record() {
         if monitor != nil { stop(); return }
         title = "Press keys…"
+        hotkeys.suspend()
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
             self.stop()
             if let shortcut = shortcut(from: event) {
-                self.report(setShortcut(self.shortcutAction, shortcut) ? "" : "macOS or another app already uses \(shortcut.title).")
+                self.report(setShortcut(self.shortcutAction, shortcut) ?? "")
             } else if event.keyCode != UInt16(kVK_Escape) { self.report("Use a modifier key, or a function key.") }
             return nil
         }
@@ -571,6 +572,7 @@ private final class ShortcutRecorder: NSButton {
     private func stop() {
         if let monitor { NSEvent.removeMonitor(monitor) }
         monitor = nil
+        hotkeys.register()
         showCurrent()
     }
 

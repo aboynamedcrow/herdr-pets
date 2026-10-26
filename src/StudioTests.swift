@@ -407,5 +407,18 @@ func floorSelfTest() {
         }
     }
     precondition(low < parts[1].minX + 40 && high > parts[1].maxX - 40)
-    print("PASS: Flush-edge floors, saved snaps and shortcuts, project names, and a clustered top-floor Broadway walk")
+
+    // Large pets under an area 3 pt below the top: the art cannot reach the lane, but working pets still walk and resting pets stop.
+    let nearTop = broadwayBand(walls, area: CGRect(x: 300, y: 637, width: 260, height: 60), floor: .bottom, scale: 1.5)
+    let tall = World(band: nearTop, path: world.path, cursor: .zero, scale: 1.5, still: false, broadway: true, usableBounds: walls, floor: .bottom)
+    let walker = Pet(id: "walker", kind: .codex, spot: CGPoint(x: 0.5, y: 0), in: nearTop), rester = Pet(id: "rester", kind: .claude, spot: CGPoint(x: 0.3, y: 0), in: nearTop)
+    walker.setStatus("working"); rester.setStatus("idle")
+    var xs = Set<Int>(), resting = false
+    for tick in 0..<3000 {
+        _ = walker.step(t: Double(tick) / 30, dt: 1 / 30, world: tall)
+        resting = !rester.step(t: Double(tick) / 30, dt: 1 / 30, world: tall)
+        if tick > 300 { xs.insert(Int(walker.position.x)) }
+    }
+    precondition(xs.count > 500 && resting && walker.position.y < nearTop.minY)
+    print("PASS: Flush-edge floors, saved snaps and shortcuts, project names, a clustered top-floor Broadway walk, and a walk under a wall")
 }

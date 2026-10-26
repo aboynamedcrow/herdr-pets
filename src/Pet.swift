@@ -444,7 +444,15 @@ final class Pet {
         scale = max(0.01, min(w.scale, max(1, length - 4) / (2 * half), max(1, room - 4) / (height + 8)))
         let side = half * scale + 2
         let lane = w.floor.horizontal ? w.band.insetBy(dx: min(side, w.band.width / 2), dy: 0) : w.band.insetBy(dx: 0, dy: min(side, w.band.height / 2))
-        let home = point(CGPoint(x: spot.x, y: 0), in: lane, floor: w.floor)
+        // Tall art near a wall cannot stand on the lane itself. Use the nearest line where the art fits.
+        func reachable(_ along: CGFloat) -> CGPoint {
+            let p = point(CGPoint(x: along, y: 0), in: lane, floor: w.floor)
+            return w.usableBounds.map { containedAnchor(p, in: $0) } ?? p
+        }
+        let home = reachable(spot.x)
+        let offLine = w.floor.horizontal
+            ? abs(position.y - home.y) > 1.5 || position.x < lane.minX - 1.5 || position.x > lane.maxX + 1.5
+            : abs(position.x - home.x) > 1.5 || position.y < lane.minY - 1.5 || position.y > lane.maxY + 1.5
         if w.still {
             position = home; show(standingPose); return false
         }
@@ -453,14 +461,14 @@ final class Pet {
             bounce = hop(age, length: 0.8, height: 6)
             return true
         }
-        if homing || !lane.insetBy(dx: -1.5, dy: -1.5).contains(position) {
+        if homing || offLine {
             homing = !runToward(home, maxSpeed: returnSpeed, dt: dt)
             showMoving(t, fps: 12, bob: 0)
             return true
         }
         guard status == "working" else { show(.resting); return false }
         if t < restUntil { show(.working, frame: Int((t + phase) * 8)); return true }
-        let goal = point(CGPoint(x: broadwayDirection < 0 ? 0 : 1, y: 0), in: lane, floor: w.floor)
+        let goal = reachable(broadwayDirection < 0 ? 0 : 1)
         if runToward(goal, maxSpeed: walkSpeed, dt: dt) {
             broadwayDirection *= -1
             restUntil = t + Double.random(in: 0.8...2)

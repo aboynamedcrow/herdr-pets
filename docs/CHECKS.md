@@ -80,7 +80,7 @@ Use the menu panel to open Studio if you close the window.
 11. Drag the home area flush to the top edge. The pets must turn upside down. Move it 3 pt away. They must stand upright again.
 12. Snap the home area to the left edge in Broadway. The pets must walk vertically along that edge.
 13. Set Cluster to Machine and to Project. Check one group for each value, in both movement modes.
-14. Record a shortcut for each action in Studio. Press each one, also from another app. Record a combination that macOS uses. Studio must show an error.
+14. In the installed app, record a shortcut for each action in Studio. Press each one, also from another app. Record an enabled macOS shortcut, such as ⌃Space. Studio must show an error and keep the previous value. A demo process does not register shortcuts.
 15. With two monitors, press the next-monitor shortcut. The home area must keep its place and flush edges.
 
 A demo uses synthetic agent states. It does not read a live agent question.

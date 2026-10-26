@@ -153,7 +153,9 @@ A Karabiner hyper key arrives as ⌃⌥⇧⌘. Shortcuts need no Accessibility p
 | Show or hide the home area window | Opens or closes the area editor, so you can drag it |
 | Move to the next monitor | Moves the home area to the next monitor at the same place, with the same flush edges |
 
-If macOS or another app already uses a combination, Studio shows an error and keeps the field empty.
+Studio refuses a combination that an enabled macOS shortcut uses, for example ⌃Space for the input source. The field keeps its previous value.
+Studio cannot detect a combination that another app holds. Both apps then receive the key. Choose a combination that your other apps do not use.
+Demo and preview processes do not register shortcuts. Only the running app does.
 In both modes, attention pets follow the original screen-edge route toward the pointer.
 They do not cross the screen interior to chase it.
 The done animation and checkmark remain the same.

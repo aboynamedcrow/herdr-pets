@@ -54,7 +54,7 @@ NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenPar
 NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main) { _ in scene.wake() }   // macOS Reduce Motion
 controls.install()
 let hotkeys = Hotkeys()
-hotkeys.install()
+if !demo && !arguments.contains(where: { $0.hasSuffix("-preview") }) { hotkeys.install() }
 if let i = arguments.firstIndex(of: "--studio-preview"), i + 1 < arguments.count {
     scene.apply(studioPreviewAgents())
     petStudio.show()
