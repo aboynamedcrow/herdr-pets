@@ -4,9 +4,9 @@ func questionBubbleSize(text: String, title: String, expanded: Bool, screen: CGS
     let available = CGSize(width: max(1, screen.width - 12), height: max(1, screen.height - 12))
     if !expanded {
         let font = NSFont.systemFont(ofSize: 13)
-        let preview = attentionQuestionPreview(text)
-        let width = min(available.width, 340, max(160, ceil((preview as NSString).size(withAttributes: [.font: font]).width) + 26))
-        let measured = (preview as NSString).boundingRect(with: CGSize(width: max(1, width - 26), height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: [.font: font])
+        let lineWidth = title.components(separatedBy: "\n").map { ($0 as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
+        let width = min(available.width, 340, max(160, ceil(lineWidth) + 26))
+        let measured = (title as NSString).boundingRect(with: CGSize(width: max(1, width - 26), height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: [.font: font])
         return CGSize(width: width, height: min(available.height, max(30, ceil(measured.height) + 14)))
     }
     let font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
@@ -15,6 +15,18 @@ func questionBubbleSize(text: String, title: String, expanded: Bool, screen: CGS
     let width = min(available.width, 480, max(230, ceil(lineWidth) + 24, min(320, ceil(titleWidth) + 20)))
     let measured = (text as NSString).boundingRect(with: CGSize(width: max(1, width - 24), height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: [.font: font])
     return CGSize(width: width, height: min(available.height, max(97, ceil(measured.height) + 84)))
+}
+
+func compactBubbleTitle(agent: Agent, content: String?) -> String {
+    let label = agent.label ?? ""
+    let issue = label.range(of: "\\b[A-Z][A-Z0-9]+-[0-9]+\\b", options: .regularExpression).map { String(label[$0]) }
+    let role = label.range(of: "\\b(?:Orchestrator|Implementer|Reviewer|Researcher|Explorer|Oracle|QA)(?:[[:space:]]+[0-9]+)?\\b", options: [.regularExpression, .caseInsensitive]).map {
+        let words = label[$0].split(whereSeparator: \.isWhitespace)
+        return (words[0].lowercased() == "qa" ? "QA" : words[0].capitalized) + (words.count > 1 ? " " + words[1] : "")
+    }
+    let identity = [issue, role].compactMap { $0 }.joined(separator: " · ")
+    let preview = attentionQuestionPreview(content ?? "Waiting for input. Open the agent.")
+    return identity.isEmpty ? preview : identity + "\n" + preview
 }
 
 func bubbleRect(above head: CGPoint, size: CGSize, screen: CGRect, occupied: [CGRect]) -> CGRect {
@@ -63,6 +75,7 @@ private final class SpeechBubble {
     let scroll = NSScrollView()
     var expanded = false
     private var needsContentLayout = true
+    private var compactTitleCache: (label: String?, content: String?, title: String)?
     private var sizeCache: (body: String, title: String, expanded: Bool, screen: CGSize, size: CGSize)?
 
     init(select: @escaping () -> Void, focus: @escaping () -> Void, minimize: @escaping () -> Void) {
@@ -102,10 +115,16 @@ private final class SpeechBubble {
     func update(agent: Agent, content: String?, expanded: Bool, error: String?) {
         if self.expanded != expanded { needsContentLayout = true }
         self.expanded = expanded
-        let name = "\(agent.machine) · \(String((agent.label ?? agent.agent ?? "Agent").prefix(70)))"
-        let preview = attentionQuestionPreview(content ?? "Waiting for a question. Open the agent.")
+        let name = "\(agent.machine) · \(agent.label ?? agent.agent ?? "Agent")"
+        let preview: String
+        if let cached = compactTitleCache, cached.label == agent.label, cached.content == content {
+            preview = cached.title
+        } else {
+            preview = compactBubbleTitle(agent: agent, content: content)
+            compactTitleCache = (agent.label, content, preview)
+        }
         if compact.title != preview { compact.title = preview }
-        let tip = name + "\nClick to read the current question and choices."
+        let tip = "Click to read the current question and choices."
         if compact.toolTip != tip { compact.toolTip = tip }
         let title = error ?? ((demo ? "Preview · " : content == nil ? "Waiting for input · " : "Latest terminal text · ") + name)
         if header.stringValue != title { header.stringValue = title }
@@ -115,9 +134,14 @@ private final class SpeechBubble {
         }
         let enabled = agent.sessionKey != nil && agent.pane_id != nil
         if open.isEnabled != enabled { open.isEnabled = enabled }
+        let openTitle = agent.machine == "local" ? "Open agent" : "Open remote"
+        if open.title != openTitle { open.title = openTitle }
+        let openTip = agent.machine == "local" ? "Open this agent in Herdr." : "Open this remote agent in a new Ghostty window."
+        if open.toolTip != openTip { open.toolTip = openTip }
         if compact.isHidden != expanded { compact.isHidden = expanded }
         for child in [header, scroll, open, collapse] where child.isHidden == expanded { child.isHidden = !expanded }
-        if panel.contentView?.accessibilityLabel() != title { panel.contentView?.setAccessibilityLabel(title) }
+        let accessibleTitle = expanded ? title : preview
+        if panel.contentView?.accessibilityLabel() != accessibleTitle { panel.contentView?.setAccessibilityLabel(accessibleTitle) }
     }
 
     func preferredSize(body: String, title: String, screen: CGSize) -> CGSize {
@@ -201,7 +225,7 @@ final class SpeechBubbles {
         guard let agent = agents[id] else { return }
         focusPetAgent(agent) { [weak self] success in
             guard self?.agents[id]?.sessionKey == agent.sessionKey else { return }
-            self?.focusError = success ? nil : "Cannot open this agent. Its session or machine changed."
+            self?.focusError = success ? nil : "Cannot open this agent. Check its machine connection or open it in Herdr."
             scene.wake()
         }
     }
