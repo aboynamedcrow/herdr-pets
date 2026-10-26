@@ -30,6 +30,14 @@ final class PetScene {
         CATransaction.setDisableActions(true)
         defer { CATransaction.commit() }
         roles?.refresh()
+        let agents = agents.map { observed -> Agent in
+            guard observed.agent == "attention" else { return observed }
+            var agent = observed
+            let previous = self.agents.first { $0.id == observed.id && observed.sessionKey != nil && $0.sessionKey == observed.sessionKey }
+            // Keep art and assignment rules tied to the native agent during the hold.
+            agent.agent = observed.agent_session?.agent ?? previous?.agent ?? observed.agent
+            return agent
+        }
         self.agents = agents
         let active = Set(agents.compactMap(\.sessionKey))
         if let roles { roles.agentOverrides = roles.agentOverrides.filter { active.contains($0.key) } }
