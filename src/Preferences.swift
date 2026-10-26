@@ -6,6 +6,8 @@ struct ScreenArea: Codable {
     var bottom: CGFloat
     var width: CGFloat
     var height: CGFloat
+    var top: Bool? = nil    // Flush with the top edge. Keeps it there on a taller screen
+    var left: Bool? = nil   // Flush with the left edge. Keeps it there on a wider screen
 
     static let standard = ScreenArea(right: 20, bottom: 8, width: 260, height: 60)
 
@@ -13,8 +15,8 @@ struct ScreenArea: Codable {
     func rect(in frame: CGRect) -> CGRect {
         let w = min(max(width, minAreaSize.width), frame.width)
         let h = min(max(height, minAreaSize.height), frame.height)
-        let x = min(max(frame.maxX - right - w, frame.minX), frame.maxX - w)
-        let y = min(max(frame.minY + bottom, frame.minY), frame.maxY - h)
+        let x = left == true ? frame.minX : min(max(frame.maxX - right - w, frame.minX), frame.maxX - w)
+        let y = top == true ? frame.maxY - h : min(max(frame.minY + bottom, frame.minY), frame.maxY - h)
         return CGRect(x: x, y: y, width: w, height: h)
     }
 }
@@ -22,7 +24,8 @@ struct ScreenArea: Codable {
 // In an extension so the memberwise init stays available.
 extension ScreenArea {
     init(_ rect: CGRect, in frame: CGRect) {
-        self.init(right: frame.maxX - rect.maxX, bottom: rect.minY - frame.minY, width: rect.width, height: rect.height)
+        self.init(right: frame.maxX - rect.maxX, bottom: rect.minY - frame.minY, width: rect.width, height: rect.height,
+                  top: rect.maxY > frame.maxY - 1 ? true : nil, left: rect.minX < frame.minX + 1 ? true : nil)
     }
 }
 
@@ -51,6 +54,44 @@ enum MovementMode: String, Codable, CaseIterable {
     var title: String { self == .home ? "Home Area" : "Broadway Mode" }
 }
 
+// Pets of one machine or one project stand together. In Broadway Mode each group walks its own part of the line.
+enum ClusterMode: String, Codable, CaseIterable {
+    case off, machine, project
+    var title: String {
+        switch self {
+        case .off: return t("끄기", "Off")
+        case .machine: return t("머신별", "Machine")
+        case .project: return t("프로젝트별", "Project")
+        }
+    }
+}
+
+// A global key combination. Modifiers hold NSEvent.ModifierFlags raw values.
+struct Shortcut: Codable, Equatable {
+    var keyCode: UInt32
+    var modifiers: UInt
+    var key: String   // Shown name of the key, for example "P" or "F5"
+
+    var title: String {
+        let flags = NSEvent.ModifierFlags(rawValue: modifiers)
+        return [(NSEvent.ModifierFlags.control, "⌃"), (.option, "⌥"), (.shift, "⇧"), (.command, "⌘")]
+            .filter { flags.contains($0.0) }.map(\.1).joined() + key
+    }
+}
+
+enum ShortcutAction: String, Codable, CaseIterable {
+    case togglePets, toggleBubbles, toggleMovement, toggleHomeArea, nextMonitor
+    var title: String {
+        switch self {
+        case .togglePets: return t("펫 보이기/숨기기", "Show or hide pets")
+        case .toggleBubbles: return t("말풍선/아이콘 전환", "Bubbles or icon only")
+        case .toggleMovement: return t("모이는 곳/브로드웨이 전환", "Home area or Broadway")
+        case .toggleHomeArea: return t("모이는 곳 창 열기/닫기", "Show or hide the home area window")
+        case .nextMonitor: return t("다음 모니터로", "Move to the next monitor")
+        }
+    }
+}
+
 struct Preferences: Codable {
     var size: Double = 24              // pt, sizeRange
     var visible = true
@@ -60,6 +101,8 @@ struct Preferences: Codable {
     var customSizeShares: [String: Double] = [:]
     var movementMode: MovementMode = .home
     var showQuestionBubbles = false
+    var clusterMode: ClusterMode = .off
+    var shortcuts: [String: Shortcut] = [:]   // ShortcutAction raw value → combination
     var maxPets = 20
     var reducedMotion = false
     var screenAreas: [String: ScreenArea] = [:]   // Crowd area per monitor, keyed by NSScreen.placementID
@@ -75,7 +118,7 @@ struct Preferences: Codable {
     init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case size, visible, otherMachines, characterMode, customPetSize, customSizeShares, movementMode, showQuestionBubbles, maxPets, reducedMotion, screenAreas, screenOrder, language
+        case size, visible, otherMachines, characterMode, customPetSize, customSizeShares, movementMode, showQuestionBubbles, clusterMode, shortcuts, maxPets, reducedMotion, screenAreas, screenOrder, language
     }
     private enum LegacyKeys: String, CodingKey { case rolePets, allCharacters }
 
@@ -97,6 +140,8 @@ struct Preferences: Codable {
         customSizeShares = ((try? c.decode([String: Double].self, forKey: .customSizeShares)) ?? [:]).mapValues { $0.isFinite ? min(1, max(0, $0)) : 1 }
         movementMode = (try? c.decode(MovementMode.self, forKey: .movementMode)) ?? .home
         showQuestionBubbles = (try? c.decode(Bool.self, forKey: .showQuestionBubbles)) ?? (movementMode == .broadway)
+        clusterMode = (try? c.decode(ClusterMode.self, forKey: .clusterMode)) ?? .off
+        shortcuts = (try? c.decode([String: Shortcut].self, forKey: .shortcuts)) ?? [:]
         maxPets = min(60, max(10, try c.decodeIfPresent(Int.self, forKey: .maxPets) ?? maxPets))
         reducedMotion = try c.decodeIfPresent(Bool.self, forKey: .reducedMotion) ?? reducedMotion
         screenAreas = try c.decodeIfPresent([String: ScreenArea].self, forKey: .screenAreas) ?? [:]

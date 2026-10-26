@@ -215,6 +215,8 @@ func demoAgents() -> [Agent] {
     let states = ["working", "blocked", "working", "done", "idle"]
     let tick = Int(Date().timeIntervalSince1970 / 12)
     return PetKind.allCases.enumerated().map { i, kind in
-        Agent(terminal_id: "demo-\(kind.rawValue)", agent_status: states[(tick + i) % states.count], agent: kind.rawValue)
+        // Three machines and two projects, so the preview shows clusters.
+        Agent(terminal_id: "demo-\(kind.rawValue)", agent_status: states[(tick + i) % states.count], agent: kind.rawValue,
+              cwd: "~/r/" + ["dot", "herdr-pets"][i % 2], machine: ["local", "mac-a", "mac-b"][i % 3])
     }
 }

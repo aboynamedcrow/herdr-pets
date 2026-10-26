@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 
 let petDragType = NSPasteboard.PasteboardType("dev.herdr-pets.character")
 
@@ -462,22 +463,50 @@ final class PetStudio: NSObject, NSWindowDelegate, NSSearchFieldDelegate {
         fill(sizesHost, with: studioScroll(content))
     }
 
+    // Behavior choices apply at once, like the menu panel. They are not part of the Apply draft.
     private func behaviorView() -> NSView {
         let modes = NSPopUpButton(); modes.addItems(withTitles: MovementMode.allCases.map(\.title))
-        modes.selectItem(at: MovementMode.allCases.firstIndex(of: settings.movementMode)!)
+        modes.selectItem(at: MovementMode.allCases.firstIndex(of: preferences.movementMode)!)
         modes.target = self; modes.action = #selector(selectMovement(_:))
+        let clusters = NSPopUpButton(); clusters.addItems(withTitles: ClusterMode.allCases.map(\.title))
+        clusters.selectItem(at: ClusterMode.allCases.firstIndex(of: preferences.clusterMode)!)
+        clusters.target = self; clusters.action = #selector(selectCluster(_:))
         let bubbles = NSButton(checkboxWithTitle: "Show question bubbles", target: self, action: #selector(selectBubbles(_:)))
-        bubbles.state = settings.showQuestionBubbles ? .on : .off
+        bubbles.state = preferences.showQuestionBubbles ? .on : .off
         let reduced = NSButton(checkboxWithTitle: "Reduce motion", target: self, action: #selector(selectReduced(_:)))
-        reduced.state = settings.reducedMotion ? .on : .off
-        return studioStack([studioText("Movement mode"), modes,
-            studioText("Broadway pets walk along the bottom of the selected screen. Attention pets follow screen edges in both modes."),
+        reduced.state = preferences.reducedMotion ? .on : .off
+        let shortcuts = ShortcutAction.allCases.map { action -> NSView in
+            let name = studioText(action.title)
+            name.widthAnchor.constraint(equalToConstant: 260).isActive = true
+            let row = studioStack([name, ShortcutRecorder(action) { [weak self] message in self?.errorLabel.stringValue = message },
+                                   StudioButton("Clear") { setShortcut(action, nil) }], vertical: false)
+            row.setHuggingPriority(.required, for: .vertical)
+            return row
+        }
+        let spacer = NSView()   // Takes the extra height when the window is taller than the tab
+        spacer.setContentHuggingPriority(NSLayoutConstraint.Priority(1), for: .vertical)
+        let content = studioStack([studioText("Movement mode"), modes,
+            studioText("Broadway pets walk the home area's floor line across the whole screen. Attention pets follow screen edges in both modes.", secondary: true),
+            studioText("Cluster by"), clusters,
+            studioText("Pets of one machine or one project stand together. In Broadway Mode each group walks its own part of the line.", secondary: true),
             bubbles, studioText("Turn bubbles off to use only the exclamation mark. This choice applies in both movement modes.", secondary: true),
-            reduced, studioText("Attention varies between stationary custom animations. The done animation stays the same.", secondary: true)])
+            reduced, studioText("Attention varies between stationary custom animations. The done animation stays the same.", secondary: true),
+            studioText("Keyboard shortcuts")]
+            + shortcuts
+            + [studioText("Click a shortcut, then press the keys. Use at least one modifier, or a function key. Escape cancels. A Karabiner hyper key works as ⌃⌥⇧⌘.", secondary: true), spacer])
+        return studioScroll(content)
     }
-    @objc private func selectMovement(_ sender: NSPopUpButton) { settings.movementMode = MovementMode.allCases[sender.indexOfSelectedItem] }
-    @objc private func selectBubbles(_ sender: NSButton) { settings.showQuestionBubbles = sender.state == .on }
-    @objc private func selectReduced(_ sender: NSButton) { settings.reducedMotion = sender.state == .on }
+    @objc private func selectMovement(_ sender: NSPopUpButton) { setMovement(MovementMode.allCases[sender.indexOfSelectedItem]) }
+    @objc private func selectCluster(_ sender: NSPopUpButton) { setCluster(ClusterMode.allCases[sender.indexOfSelectedItem]) }
+    @objc private func selectBubbles(_ sender: NSButton) { setBubbles(sender.state == .on) }
+    @objc private func selectReduced(_ sender: NSButton) { setReducedMotion(sender.state == .on) }
+
+    // A shortcut, the menu panel, or this tab changed a behavior setting.
+    func syncBehavior() {
+        guard window != nil, let item = tabs?.tabViewItems[2] else { return }
+        item.view = behaviorView()
+        item.view?.autoresizingMask = [.width, .height]
+    }
 
     private func reloadDraft() {
         roles.reload()
@@ -486,8 +515,7 @@ final class PetStudio: NSObject, NSWindowDelegate, NSSearchFieldDelegate {
         selectedScope = nil; activateAssignmentsOnApply = false
         entries = PetKind.allCases.map { ("builtin:" + $0.rawValue, $0.title, Sprites.thumbnail($0)) }
         entries += roles.customIDs.compactMap { id in roles.thumbnail(id).map { ("custom:" + id, $0.title, $0.image) } }
-        tabs?.tabViewItems[2].view = behaviorView()
-        tabs?.tabViewItems[2].view?.autoresizingMask = [.width, .height]
+        syncBehavior()
         refreshPalette(); refreshGrid(); refreshSizes(); errorLabel.stringValue = roles.assignments.lastError ?? ""
     }
     private func apply() {
@@ -496,17 +524,59 @@ final class PetStudio: NSObject, NSWindowDelegate, NSSearchFieldDelegate {
             expected = roles.assignments.snapshot
             var updated = preferences
             updated.size = settings.size; updated.customPetSize = settings.customPetSize
-            updated.customSizeShares = settings.customSizeShares; updated.movementMode = settings.movementMode
+            updated.customSizeShares = settings.customSizeShares
             if activateAssignmentsOnApply { updated.characterMode = .custom }
-            updated.reducedMotion = settings.reducedMotion; updated.showQuestionBubbles = settings.showQuestionBubbles
             do { try updated.saveChecked() }
-            catch { errorLabel.stringValue = "Assignments saved. Cannot save size and behavior settings: " + error.localizedDescription; return }
+            catch { errorLabel.stringValue = "Assignments saved. Cannot save size settings: " + error.localizedDescription; return }
             preferences = updated; activateAssignmentsOnApply = false; updateModeHint()
             let active = Set(scene.agents.compactMap(\.sessionKey))
             roles.agentOverrides = overrides.filter { active.contains($0.key) }
             roles.reload(); scene.apply(scene.agents); scene.wake(); restoreArea()
             errorLabel.stringValue = "Applied. Grid choices take effect in Custom mode."
         } catch { errorLabel.stringValue = error.localizedDescription }
+    }
+}
+
+// Records the next key press as the action's shortcut. Clicking again, or Escape, cancels.
+private final class ShortcutRecorder: NSButton {
+    private let shortcutAction: ShortcutAction
+    private let report: (String) -> Void
+    private var monitor: Any?
+
+    init(_ action: ShortcutAction, report: @escaping (String) -> Void) {
+        shortcutAction = action; self.report = report
+        super.init(frame: .zero)
+        bezelStyle = .rounded
+        target = self; self.action = #selector(record)
+        widthAnchor.constraint(equalToConstant: 150).isActive = true
+        showCurrent()
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    private func showCurrent() { title = preferences.shortcuts[shortcutAction.rawValue]?.title ?? "None" }
+
+    @objc private func record() {
+        if monitor != nil { stop(); return }
+        title = "Press keys…"
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self else { return event }
+            self.stop()
+            if let shortcut = shortcut(from: event) {
+                self.report(setShortcut(self.shortcutAction, shortcut) ? "" : "macOS or another app already uses \(shortcut.title).")
+            } else if event.keyCode != UInt16(kVK_Escape) { self.report("Use a modifier key, or a function key.") }
+            return nil
+        }
+    }
+
+    private func stop() {
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
+        showCurrent()
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow == nil && monitor != nil { stop() }
+        super.viewWillMove(toWindow: newWindow)
     }
 }
 

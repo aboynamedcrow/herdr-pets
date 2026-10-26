@@ -62,9 +62,24 @@ func moveArea(to screen: NSScreen) {
     layout(on: screen, placement: placement)
 }
 
-// Opened from the panel's "Set…" button. Pets follow the translucent window as it moves; closing it saves.
+// Opened from the panel's "Set…" button or a shortcut. Pets follow the translucent window as it moves; closing it saves.
+// A darker tint shows that the area is flush with a screen edge, so pets stand on that edge.
 final class AreaEditor: NSObject, NSWindowDelegate {
     private var window: NSWindow?
+
+    func toggle() {
+        if let window, window.isVisible { window.close() } else { show() }
+    }
+
+    // Puts an open editor over the area after the area moved without it.
+    func match() {
+        window?.setFrame(area, display: true)
+    }
+
+    private func tint(_ w: NSWindow) {
+        let flush = screenContaining(NSPoint(x: area.midX, y: area.midY)).map { !flushEdges(area, in: $0.visibleFrame).isEmpty } ?? false
+        w.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(flush ? 0.22 : 0.08)
+    }
 
     func show() {
         if let window { window.makeKeyAndOrderFront(nil); return }
@@ -75,7 +90,7 @@ final class AreaEditor: NSObject, NSWindowDelegate {
         w.isMovableByWindowBackground = true
         w.isReleasedWhenClosed = false
         w.isOpaque = false
-        w.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.08)
+        tint(w)
         w.level = .floating
         w.contentMinSize = minAreaSize
         w.delegate = self
@@ -89,6 +104,7 @@ final class AreaEditor: NSObject, NSWindowDelegate {
         let rect = w.contentRect(forFrameRect: w.frame)
         guard let screen = screenContaining(NSPoint(x: rect.midX, y: rect.midY)) ?? w.screen else { return }
         layout(on: screen, placement: ScreenArea(rect, in: screen.visibleFrame))
+        tint(w)
     }
     func windowDidMove(_ n: Notification) { follow(n) }
     func windowDidResize(_ n: Notification) { follow(n) }
