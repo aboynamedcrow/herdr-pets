@@ -1,7 +1,10 @@
 # Attention token
 
 The attention daemon owns the pane token `attention`, from source `attention-watch`.
-It reports `blocked` with the agent label `attention` before it sets the token.
+The token alone marks a pane that needs ingwon. The pane can stay `idle`.
+The daemon does not report `blocked` or change the agent label.
+Pets show attention when the state is `blocked` or the token is not empty.
+An attention token takes priority over a done celebration.
 
 ```sh
 herdr pane report-metadata <pane> --source attention-watch --token 'attention=<class>: <first line>'
@@ -11,7 +14,9 @@ The daemon scrubs the value and limits it to 200 characters.
 Herdr 0.9.5 limits stored token values to 80 characters. Clients receive the shorter value.
 The token has no provider or session identity. Clients must keep their existing pane and native session checks.
 
-The daemon clears the token with each release. A restart clears tokens from its own source.
+The daemon clears the token when the pane no longer needs ingwon.
+If the state is not `blocked`, this removes the badge and bubble.
+A restart clears tokens from its own source.
 
 ```sh
 herdr pane report-metadata <pane> --source attention-watch --clear-token attention

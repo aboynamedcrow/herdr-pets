@@ -42,7 +42,7 @@ final class PetScene {
         let active = Set(agents.compactMap(\.sessionKey))
         if let roles { roles.agentOverrides = roles.agentOverrides.filter { active.contains($0.key) } }
         let awake = agents.filter { !$0.asleep }
-        let shown = (awake.filter { $0.agent_status == "blocked" } + awake.filter { $0.agent_status != "blocked" } + agents.filter(\.asleep)).prefix(maxPets)
+        let shown = (awake.filter(\.needsAttention) + awake.filter { !$0.needsAttention } + agents.filter(\.asleep)).prefix(maxPets)
         var changed = false
         for (id, pet) in pets where !shown.contains(where: { $0.id == id }) {
             changed = true
@@ -64,11 +64,11 @@ final class PetScene {
             if demo && arguments.contains("--custom-demo"), let roles, !roles.customIDs.isEmpty { displayed = roles.resolve("custom:" + roles.customIDs[index % roles.customIDs.count], for: agent) }
             else { displayed = character }
             if pet.setCharacter(displayed, frames: roles?.frames(for: displayed)) { changed = true }
-            if pet.setStatus(agent.asleep ? "asleep" : agent.agent_status) { changed = true }
+            if pet.setStatus(agent.asleep ? "asleep" : agent.needsAttention ? "blocked" : agent.agent_status) { changed = true }
         }
         let eligible = preferences.visible && preferences.showQuestionBubbles
         if demo {
-            blockedTexts = Dictionary(uniqueKeysWithValues: agents.filter { $0.agent_status == "blocked" }.map { ($0.id, "Preview question: Should I apply these changes?\n1. Apply\n2. Keep the current version") })
+            blockedTexts = Dictionary(uniqueKeysWithValues: agents.filter(\.needsAttention).map { ($0.id, "Preview question: Should I apply these changes?\n1. Apply\n2. Keep the current version") })
         } else { blockedReader.update(eligible ? agents.filter { pets[$0.id] != nil } : []) }
         syncBubbles()
         if changed && preferences.visible { update() }   // Show the new status in this same commit, not one tick later

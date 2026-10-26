@@ -183,7 +183,7 @@ final class SpeechBubbles {
     }
 
     func update(agents: [Agent], pets: [String: Pet], texts: [String: String], origin: CGPoint, screen: CGRect) {
-        let blocked = agents.filter { $0.agent_status == "blocked" && !$0.asleep && pets[$0.id] != nil }.sorted { $0.id < $1.id }
+        let blocked = agents.filter { $0.needsAttention && !$0.asleep && pets[$0.id] != nil }.sorted { $0.id < $1.id }
         let ids = Set(blocked.map(\.id))
         for (id, bubble) in bubbles where !ids.contains(id) { bubble.panel.orderOut(nil); bubbles[id] = nil }
         self.agents = Dictionary(uniqueKeysWithValues: blocked.map { ($0.id, $0) })

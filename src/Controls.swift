@@ -114,7 +114,7 @@ final class Controls: NSObject {
     func refresh(connected: Bool) {
         self.connected = connected
         let count = scene.agents.count
-        let waiting = scene.agents.filter { $0.agent_status == "blocked" && !$0.asleep }.count
+        let waiting = scene.agents.filter { $0.needsAttention && !$0.asleep }.count
         let asleep = scene.agents.filter(\.asleep).count
         var text = demo ? t("미리보기 · 펫 \(count)마리", "Preview · \(count) pets")
             : !connected ? t("Herdr 연결을 기다리는 중", "Waiting for Herdr")
