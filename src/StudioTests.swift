@@ -1,6 +1,24 @@
 import AppKit
 
 func studioSelfTest() {
+    for mode in ["home", "broadway"] {
+        for visible in [false, true] {
+            let data = try! JSONSerialization.data(withJSONObject: ["movementMode": mode, "showQuestionBubbles": visible])
+            var choice = try! JSONDecoder().decode(Preferences.self, from: data)
+            choice.movementMode = mode == "home" ? .broadway : .home
+            let encoded = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(choice)) as! [String: Any]
+            if encoded["showQuestionBubbles"] as? Bool != visible {
+                FileHandle.standardError.write(Data("FAIL: Bubble choice must persist across movement changes.\n".utf8))
+                exit(1)
+            }
+        }
+    }
+
+    for (legacy, expected) in [("{\"movementMode\":\"home\"}", false), ("{\"movementMode\":\"broadway\"}", true)] {
+        let migrated = try! JSONDecoder().decode(Preferences.self, from: Data(legacy.utf8))
+        precondition(migrated.showQuestionBubbles == expected)
+    }
+    print("PASS: Bubble choice persists across movement changes and keeps old settings")
     var sizeSettings = Preferences()
     sizeSettings.customPetSize = 150
     sizeSettings.customSizeShares = ["sample": 0.5]

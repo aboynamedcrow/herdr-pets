@@ -222,6 +222,7 @@ final class PetStudio: NSObject, NSWindowDelegate, NSSearchFieldDelegate {
         types.addItems(withTitles: ["All agent types"] + knownTypes)
         types.selectItem(at: agentType.isEmpty ? 0 : (knownTypes.firstIndex(of: agentType) ?? -1) + 1)
         types.target = self; types.action = #selector(selectType(_:))
+        types.toolTip = "Choose a type, then use All repositories and All roles for a type-wide assignment."
         let path = NSTextField(); path.placeholderString = "Repository path, such as ~/r/worktrees/project"
         path.widthAnchor.constraint(greaterThanOrEqualToConstant: 220).isActive = true
         let addPath = StudioButton("Add path") { [weak self, weak path] in
@@ -235,8 +236,8 @@ final class PetStudio: NSObject, NSWindowDelegate, NSSearchFieldDelegate {
         }
         let suggestions = NSPopUpButton(); suggestions.addItems(withTitles: ["Add a live repository…"] + Array(Set(scene.agents.compactMap(\.cwd))).sorted())
         suggestions.target = self; suggestions.action = #selector(addSuggestion(_:))
-        let tools = studioStack([types, StudioButton("Add role…") { [weak self] in self?.addRole() }, suggestions], vertical: false)
-        let right = studioStack([tools, studioStack([path, addPath, browse], vertical: false), gridHost, details])
+        let tools = studioStack([studioText("Agent type"), types, StudioButton("Add role…") { [weak self] in self?.addRole() }, suggestions], vertical: false)
+        let right = studioStack([studioText("Assignments apply in Custom mode. Select an agent type above the grid.", secondary: true), tools, studioStack([path, addPath, browse], vertical: false), gridHost, details])
         gridHost.heightAnchor.constraint(greaterThanOrEqualToConstant: 220).isActive = true
         for view in [tools, gridHost, details] { view.widthAnchor.constraint(equalTo: right.widthAnchor).isActive = true }
         let all = studioStack([paletteView, right], vertical: false)
@@ -388,13 +389,17 @@ final class PetStudio: NSObject, NSWindowDelegate, NSSearchFieldDelegate {
         let modes = NSPopUpButton(); modes.addItems(withTitles: MovementMode.allCases.map(\.title))
         modes.selectItem(at: MovementMode.allCases.firstIndex(of: settings.movementMode)!)
         modes.target = self; modes.action = #selector(selectMovement(_:))
+        let bubbles = NSButton(checkboxWithTitle: "Show question bubbles", target: self, action: #selector(selectBubbles(_:)))
+        bubbles.state = settings.showQuestionBubbles ? .on : .off
         let reduced = NSButton(checkboxWithTitle: "Reduce motion", target: self, action: #selector(selectReduced(_:)))
         reduced.state = settings.reducedMotion ? .on : .off
         return studioStack([studioText("Movement mode"), modes,
-            studioText("Broadway pets walk along the bottom of the selected screen. Blocked pets approach the pointer with a question bubble."),
+            studioText("Broadway pets walk along the bottom of the selected screen. Attention pets follow screen edges in both modes."),
+            bubbles, studioText("Turn bubbles off to use only the exclamation mark. This choice applies in both movement modes.", secondary: true),
             reduced, studioText("Attention varies between stationary custom animations. The done animation stays the same.", secondary: true)])
     }
     @objc private func selectMovement(_ sender: NSPopUpButton) { settings.movementMode = MovementMode.allCases[sender.indexOfSelectedItem] }
+    @objc private func selectBubbles(_ sender: NSButton) { settings.showQuestionBubbles = sender.state == .on }
     @objc private func selectReduced(_ sender: NSButton) { settings.reducedMotion = sender.state == .on }
 
     private func reloadDraft() {
@@ -414,7 +419,7 @@ final class PetStudio: NSObject, NSWindowDelegate, NSSearchFieldDelegate {
             var updated = preferences
             updated.size = settings.size; updated.customPetSize = settings.customPetSize
             updated.customSizeShares = settings.customSizeShares; updated.movementMode = settings.movementMode
-            updated.reducedMotion = settings.reducedMotion
+            updated.reducedMotion = settings.reducedMotion; updated.showQuestionBubbles = settings.showQuestionBubbles
             do { try updated.saveChecked() }
             catch { errorLabel.stringValue = "Assignments saved. Cannot save size and behavior settings: " + error.localizedDescription; return }
             preferences = updated

@@ -265,6 +265,14 @@ private func catalogBoundarySelfTest(_ sheet: CGImage) {
     precondition(picks.contains { if case .custom("sample", _) = $0 { return true }; return false })
     precondition(picks.contains { if case .builtin = $0 { return true }; return false })
     precondition(keys[2].id == "5:local:review-2" && picks[2] == .builtin(.claude))
+    let rootLink = directory.appendingPathComponent("linked-library")
+    try! FileManager.default.createSymbolicLink(at: rootLink, withDestinationURL: pets)
+    let throughRootLink = RolePets(directory: rootLink, clock: { now }, log: { _ in })
+    throughRootLink.refresh(mode: .village)
+    if throughRootLink.customIDs != ["sample"] {
+        FileHandle.standardError.write(Data("FAIL: A linked library root must discover a pet without a rule.\n".utf8))
+        exit(1)
+    }
     let restarted = RolePets(directory: pets, clock: { now }, log: { _ in })
     restarted.refresh(mode: .village)
     precondition(restarted.customIDs == ["sample"] && restarted.thumbnail("sample") != nil)

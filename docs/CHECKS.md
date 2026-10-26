@@ -19,6 +19,19 @@ Keep the build log and test log. Preserve each exit code when redirecting output
 The self-tests use synthetic art and controlled fetchers. They do not prove live provider behavior.
 They cover assignments, file conflicts, size calculations, animation choices, screen bounds, stale text, and machine separation.
 
+## Installed custom library
+
+```sh
+./bin/pets --check-library
+./bin/pets --check-library sample
+```
+
+The first command lists custom pets that the app can load.
+The second requires a custom pet with ID `sample`. Use the IDs required by the installation.
+A missing ID must exit one. File hashes alone do not prove that the loader finds each pet.
+Run this check on each Mac after a plugin or library update.
+A library root can be a Stow link. The scan must include folders without rules.
+
 ## Native previews
 
 ```sh
@@ -49,7 +62,7 @@ Use the menu panel to open Studio if you close the window.
 2. Change an assignment and cancel. Reopen Studio. The saved choice must remain.
 3. Apply a choice in Custom mode. The affected pet must change without changing its agent identity.
 4. Change a custom size share. Compare the preview and desktop result. Check Reset.
-5. Move the pointer to each side of the screen. Attention pets must traverse screen edges.
+5. Check question bubbles on and off in both movement modes. Then move the pointer to each side of the screen. Attention pets must traverse screen edges.
 6. Check short and long bubbles. Their size must fit their text and controls within the screen.
 7. Click the desktop outside the bubbles. The underlying application must receive the click.
 8. Enable Reduce Motion. Check static blocked poses and readable bubbles.

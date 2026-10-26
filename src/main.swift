@@ -3,8 +3,20 @@
 import AppKit
 
 let arguments = CommandLine.arguments
+if let index = arguments.firstIndex(of: "--check-library") {
+    let library = RolePets()
+    library.reload()
+    print("Library: " + RolePets.directory.path)
+    print("Custom pets: " + library.customIDs.joined(separator: ", "))
+    let missing = Set(arguments.dropFirst(index + 1)).subtracting(library.customIDs)
+    if !missing.isEmpty {
+        FileHandle.standardError.write(Data(("Missing custom pets: " + missing.sorted().joined(separator: ", ") + "\n").utf8))
+        exit(1)
+    }
+    exit(0)
+}
 let demo = arguments.contains("--demo") || arguments.contains("--broadway-demo")
-if arguments.contains("--broadway-demo") { preferences.movementMode = .broadway }
+if arguments.contains("--broadway-demo") { preferences.movementMode = .broadway; preferences.showQuestionBubbles = true }
 let launchedByPlugin = ProcessInfo.processInfo.environment["HERDR_PLUGIN_ID"] != nil
 
 if arguments.contains("--self-test") { selfTest(); exit(0) }

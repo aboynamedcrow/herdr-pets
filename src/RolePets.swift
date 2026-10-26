@@ -203,7 +203,7 @@ final class RolePets {
         }
         guard now >= nextRead else { return }
         nextRead = now + 60
-        let folders = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
+        let folders = (try? FileManager.default.contentsOfDirectory(at: directory.resolvingSymlinksInPath(), includingPropertiesForKeys: [.isDirectoryKey])) ?? []
         let discovered = folders.filter { (try? $0.resolvingSymlinksInPath().resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }.map(\.lastPathComponent)
         let ids = Set(rules.map(\.pet)).subtracting(["agent", "generic"]).union(discovered)
         cache = cache.filter { ids.contains($0.key) }

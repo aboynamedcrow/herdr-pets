@@ -40,8 +40,8 @@ enum CharacterMode: String, Codable, CaseIterable {
         switch self {
         case .agent: return t("에이전트 종류별 캐릭터를 사용해요", "Characters follow the agent type")
         case .random: return t("펫마다 내장 14종 중 하나가 정해져요", "Each pet keeps one of 14 built-in characters")
-        case .village: return t("내장 캐릭터와 커스텀 펫을 함께 골라요", "Pick from built-in and custom pets")
-        case .custom: return t("규칙으로 펫을 골라요", "Rules choose each pet")
+        case .village: return t("내장 캐릭터와 커스텀 펫을 함께 골라요", "Mixed pets; Studio assignments are off")
+        case .custom: return t("규칙으로 펫을 골라요", "Studio assignments, then existing rules")
         }
     }
 }
@@ -59,6 +59,7 @@ struct Preferences: Codable {
     var customPetSize = 130
     var customSizeShares: [String: Double] = [:]
     var movementMode: MovementMode = .home
+    var showQuestionBubbles = false
     var maxPets = 20
     var reducedMotion = false
     var screenAreas: [String: ScreenArea] = [:]   // Crowd area per monitor, keyed by NSScreen.placementID
@@ -74,7 +75,7 @@ struct Preferences: Codable {
     init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case size, visible, otherMachines, characterMode, customPetSize, customSizeShares, movementMode, maxPets, reducedMotion, screenAreas, screenOrder, language
+        case size, visible, otherMachines, characterMode, customPetSize, customSizeShares, movementMode, showQuestionBubbles, maxPets, reducedMotion, screenAreas, screenOrder, language
     }
     private enum LegacyKeys: String, CodingKey { case rolePets, allCharacters }
 
@@ -95,6 +96,7 @@ struct Preferences: Codable {
         customPetSize = min(200, max(100, try c.decodeIfPresent(Int.self, forKey: .customPetSize) ?? customPetSize))
         customSizeShares = ((try? c.decode([String: Double].self, forKey: .customSizeShares)) ?? [:]).mapValues { $0.isFinite ? min(1, max(0, $0)) : 1 }
         movementMode = (try? c.decode(MovementMode.self, forKey: .movementMode)) ?? .home
+        showQuestionBubbles = (try? c.decode(Bool.self, forKey: .showQuestionBubbles)) ?? (movementMode == .broadway)
         maxPets = min(60, max(10, try c.decodeIfPresent(Int.self, forKey: .maxPets) ?? maxPets))
         reducedMotion = try c.decodeIfPresent(Bool.self, forKey: .reducedMotion) ?? reducedMotion
         screenAreas = try c.decodeIfPresent([String: ScreenArea].self, forKey: .screenAreas) ?? [:]
