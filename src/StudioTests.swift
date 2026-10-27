@@ -413,12 +413,13 @@ func floorSelfTest() {
     let tall = World(band: nearTop, path: world.path, cursor: .zero, scale: 1.5, still: false, broadway: true, usableBounds: walls, floor: .bottom)
     let walker = Pet(id: "walker", kind: .codex, spot: CGPoint(x: 0.5, y: 0), in: nearTop), rester = Pet(id: "rester", kind: .claude, spot: CGPoint(x: 0.3, y: 0), in: nearTop)
     walker.setStatus("working"); rester.setStatus("idle")
-    var xs = Set<Int>(), resting = false
+    var left = CGFloat.infinity, right = -CGFloat.infinity, resting = false
     for tick in 0..<3000 {
         _ = walker.step(t: Double(tick) / 30, dt: 1 / 30, world: tall)
         resting = !rester.step(t: Double(tick) / 30, dt: 1 / 30, world: tall)
-        if tick > 300 { xs.insert(Int(walker.position.x)) }
+        if tick > 300 { left = min(left, walker.position.x); right = max(right, walker.position.x) }
     }
-    precondition(xs.count > 500 && resting && walker.position.y < nearTop.minY)
+    // Check the span, not distinct x values. A fast random walk speed skips whole points.
+    precondition(left < nearTop.minX + 100 && right > nearTop.maxX - 100 && resting && walker.position.y < nearTop.minY)
     print("PASS: Flush-edge floors, saved snaps and shortcuts, project names, a clustered top-floor Broadway walk, and a walk under a wall")
 }
