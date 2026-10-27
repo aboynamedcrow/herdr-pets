@@ -99,6 +99,7 @@ extension ShortcutAction {
         case .toggleMovement: setMovement(preferences.movementMode == .home ? .broadway : .home)
         case .toggleHomeArea: areaEditor.toggle()
         case .nextMonitor: moveToNextScreen()
+        case .toggleMenu: controls.toggleFromShortcut()
         }
     }
 }

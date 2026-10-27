@@ -152,6 +152,7 @@ A Karabiner hyper key arrives as ⌃⌥⇧⌘. Shortcuts need no Accessibility p
 | Home area or Broadway | Changes the movement mode |
 | Show or hide the home area window | Opens or closes the area editor, so you can drag it |
 | Move to the next monitor | Moves the home area to the next monitor at the same place, with the same flush edges |
+| Show or hide the menu bar panel | Opens or closes the panel of the menu bar icon. A click outside the panel also closes it. A second press gives focus back to the app you used before. |
 
 Studio refuses a combination that an enabled macOS shortcut uses, for example ⌃Space for the input source. The field keeps its previous value.
 Studio cannot detect a combination that another app holds. Both apps then receive the key. Choose a combination that your other apps do not use.

@@ -80,7 +80,7 @@ struct Shortcut: Codable, Equatable {
 }
 
 enum ShortcutAction: String, Codable, CaseIterable {
-    case togglePets, toggleBubbles, toggleMovement, toggleHomeArea, nextMonitor
+    case togglePets, toggleBubbles, toggleMovement, toggleHomeArea, nextMonitor, toggleMenu
     var title: String {
         switch self {
         case .togglePets: return t("펫 보이기/숨기기", "Show or hide pets")
@@ -88,6 +88,7 @@ enum ShortcutAction: String, Codable, CaseIterable {
         case .toggleMovement: return t("모이는 곳/브로드웨이 전환", "Home area or Broadway")
         case .toggleHomeArea: return t("모이는 곳 창 열기/닫기", "Show or hide the home area window")
         case .nextMonitor: return t("다음 모니터로", "Move to the next monitor")
+        case .toggleMenu: return t("메뉴 막대 패널 열기/닫기", "Show or hide the menu bar panel")
         }
     }
 }
