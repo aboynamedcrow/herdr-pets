@@ -82,6 +82,7 @@ Use the menu panel to open Studio if you close the window.
 13. Set Cluster to Machine and to Project. Check one group for each value, in both movement modes.
 14. In the installed app, record a shortcut for each action in Studio. Press each one, also from another app. Record an enabled macOS shortcut, such as ⌃Space. Studio must show an error and keep the previous value. A demo process does not register shortcuts.
 15. With two monitors, press the next-monitor shortcut. The home area must keep its place and flush edges.
+16. From another app, press the menu bar panel shortcut. The panel must open below the icon. Click in the other app. The panel must close. Press the shortcut again with the panel open. The panel must close.
 
 A demo uses synthetic agent states. It does not read a live agent question.
 Quit the owned demo from its own menu. Leave the installed instance running.

@@ -209,6 +209,12 @@ final class Controls: NSObject {
 
     @objc private func toggle() { popover.isShown ? popover.performClose(nil) : show() }
 
+    // The app must be active, or a click in another app does not close the transient panel.
+    func toggleFromShortcut() {
+        if !popover.isShown { NSApp.activate(ignoringOtherApps: true) }
+        toggle()
+    }
+
     // apply brings back pets whose character changed.
     @objc private func changeCharacters(_ sender: NSSegmentedControl) {
         preferences.characterMode = CharacterMode.allCases[sender.selectedSegment]
