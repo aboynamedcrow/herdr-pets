@@ -13,6 +13,7 @@ final class Controls: NSObject {
     private let maxLabel = label("", size: 12, secondary: true)
     private var screenRows: [NSView] = []   // Monitor row and its separator. Shown only with two or more screens
     private var connected = true
+    private var previousApp: NSRunningApplication?   // Had focus before the shortcut opened the panel
 
     func install() {
         let icon = NSImage(contentsOf: projectRoot.appendingPathComponent("assets/menubar-icon.png"))
@@ -210,9 +211,18 @@ final class Controls: NSObject {
     @objc private func toggle() { popover.isShown ? popover.performClose(nil) : show() }
 
     // The app must be active, or a click in another app does not close the transient panel.
+    // A second press gives focus back to the app that had it before the first press.
     func toggleFromShortcut() {
-        if !popover.isShown { NSApp.activate(ignoringOtherApps: true) }
-        toggle()
+        if popover.isShown {
+            popover.performClose(nil)
+            if NSApp.isActive { previousApp?.activate() }
+            previousApp = nil
+        } else {
+            let front = NSWorkspace.shared.frontmostApplication
+            previousApp = front == NSRunningApplication.current ? nil : front
+            NSApp.activate(ignoringOtherApps: true)
+            show()
+        }
     }
 
     // apply brings back pets whose character changed.
