@@ -16,8 +16,10 @@ private enum BubbleMetrics {
     static let buttonHeight: CGFloat = {
         let button = NSButton(title: "Open remote", target: nil, action: nil)
         button.font = buttonFont
+        button.bezelStyle = .rounded
+        #if compiler(>=6.2)
         if #available(macOS 26.0, *) { button.bezelStyle = .glass }
-        else { button.bezelStyle = .rounded }
+        #endif
         return ceil(button.fittingSize.height)
     }()
     static let textFieldInsets: CGFloat = 4
@@ -121,8 +123,10 @@ private final class BubbleButton: NSButton {
     convenience init(_ title: String, action: @escaping () -> Void) {
         self.init(title: title, target: nil, action: nil)
         self.invoke = action; target = self; self.action = #selector(run)
+        bezelStyle = .rounded
+        #if compiler(>=6.2)
         if #available(macOS 26.0, *) { bezelStyle = .glass }
-        else { bezelStyle = .rounded }
+        #endif
         font = BubbleMetrics.buttonFont
     }
     override var needsPanelToBecomeKey: Bool { false }
@@ -181,6 +185,35 @@ private final class BubblePanel: NSPanel {
     override var canBecomeMain: Bool { false }
 }
 
+private func bubbleBackground(for surface: NSView) -> NSView {
+    // Apple ships Swift 6.2 with the macOS 26 SDK. Keep older compilers on the fallback.
+    #if compiler(>=6.2)
+    if #available(macOS 26.0, *) {
+        let glass = NSGlassEffectView()
+        glass.style = .regular
+        glass.cornerRadius = BubbleMetrics.cornerRadius
+        glass.contentView = surface
+        return glass
+    }
+    #endif
+    let effect = NSVisualEffectView()
+    effect.material = .popover
+    effect.blendingMode = .behindWindow
+    effect.state = .active
+    let radius = BubbleMetrics.cornerRadius
+    let size = CGSize(width: radius * 2 + 1, height: radius * 2 + 1)
+    let mask = NSImage(size: size, flipped: false) { rect in
+        NSColor.black.setFill()
+        NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
+        return true
+    }
+    mask.capInsets = NSEdgeInsets(top: radius, left: radius, bottom: radius, right: radius)
+    mask.resizingMode = .stretch
+    effect.maskImage = mask
+    effect.addSubview(surface)
+    return effect
+}
+
 private final class SpeechBubble {
     let panel: NSPanel
     let surface = BubbleSurface()
@@ -207,23 +240,7 @@ private final class SpeechBubble {
         panel.becomesKeyOnlyIfNeeded = true
         surface.hover = hover; surface.click = focus
         surface.autoresizingMask = [.width, .height]
-        if #available(macOS 26.0, *) {
-            let glass = NSGlassEffectView()
-            glass.style = .regular
-            glass.cornerRadius = BubbleMetrics.cornerRadius
-            glass.contentView = surface
-            panel.contentView = glass
-        } else {
-            let effect = NSVisualEffectView()
-            effect.material = .popover
-            effect.blendingMode = .behindWindow
-            effect.state = .active
-            effect.wantsLayer = true
-            effect.layer?.cornerRadius = BubbleMetrics.cornerRadius
-            effect.layer?.masksToBounds = true
-            effect.addSubview(surface)
-            panel.contentView = effect
-        }
+        panel.contentView = bubbleBackground(for: surface)
         open = BubbleButton("Open agent", action: focus)
         surface.body = text; surface.openControl = open
         header.font = BubbleMetrics.headerFont

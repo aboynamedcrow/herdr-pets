@@ -57,8 +57,10 @@ func bubbleSelfTest() {
                  "Identity bubbles fit the 12 pt header")
     let short = questionBubbleSize(text: "Apply?", title: title, expanded: true, screen: screen.size)
     let button = NSButton(title: "Open agent", target: nil, action: nil)
+    button.bezelStyle = .rounded
+    #if compiler(>=6.2)
     if #available(macOS 26.0, *) { button.bezelStyle = .glass }
-    else { button.bezelStyle = .rounded }
+    #endif
     let bodySize = ("Apply?" as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 13)])
     precondition(short.height > headerSize.height + bodySize.height + button.fittingSize.height,
                  "Expanded bubbles fit the header, body, and native button")

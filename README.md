@@ -169,6 +169,8 @@ Click or drag within the body text to select it. Use **Open agent** or **Open re
 Text selection can take keyboard focus. Click the other app to return keyboard input to it.
 Each bubble fits its text and controls. Long text wraps and scrolls only when it cannot fit on screen.
 Translucent Liquid Glass bubbles show the agent identity and a one-line question preview.
+Glass needs macOS 26 or later and a build with the macOS 26 SDK or later.
+Other builds show a popover blur.
 Remote bubbles append the readable machine name when one exists.
 Herdr 0.9.5 supplies the visible terminal excerpt.
 The app checks the machine, terminal, native session, and screen revision before it accepts a read.
