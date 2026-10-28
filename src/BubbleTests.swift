@@ -42,11 +42,12 @@ func bubbleSelfTest() {
     pet.holdsBubble = true
     let movedPointer = World(band: band, path: world.path, cursor: CGPoint(x: 500, y: 500), scale: 1, still: true)
     _ = pet.step(t: 1, dt: 0, world: movedPointer)
-    precondition(pet.position == initial, "A blocked pet keeps its goal during the hold")
+    precondition(pet.position == initial, "A blocked pet stays in place during the hold")
     pet.holdsBubble = false
     _ = pet.step(t: 2, dt: 0, world: movedPointer)
     precondition(pet.position != initial, "A blocked pet retargets after the hold")
-    print("PASS: Blocked pets keep their goal during the bubble hold and resume after release")
+    print("PASS: Reduce Motion pets stop during the bubble hold and retarget after release")
+    movingBubbleHoldSelfTest()
 
     var agent = Agent(terminal_id: "bubble", agent_status: "blocked", agent: "claude", label: "GLE IC-1834 Orchestrator task")
     precondition(compactBubbleTitle(agent: agent) == "IC-1834 · Orchestrator", "Short header: local identity")
@@ -147,4 +148,89 @@ func bubbleSelfTest() {
     precondition(bubbleClickTarget(inside: false, expanded: true, overText: false, overControl: false) == .none,
                  "Click target: outside clicks pass through")
     print("PASS: Bubble clicks open from the surface and preserve body selection and controls")
+}
+
+
+private func movingBubbleHoldSelfTest() {
+    func require(_ condition: @autoclosure () -> Bool, _ message: String = "A bubble hold check failed") {
+        guard condition() else {
+            FileHandle.standardError.write(Data("FAIL: \(message)\n".utf8))
+            exit(1)
+        }
+    }
+    let screen = CGRect(x: 0, y: 0, width: 1000, height: 800)
+    let path = Perimeter(r: screen.insetBy(dx: 40, dy: 40))
+    let dt: CGFloat = 1 / 30
+    for startY: CGFloat in [40, 300] {
+        let band = CGRect(x: 400, y: startY, width: 200, height: 0)
+        let pet = Pet(id: "moving-hold", kind: .codex, spot: CGPoint(x: 0.5, y: 0), in: band)
+        pet.setStatus("blocked")
+        let towardRight = World(band: band, path: path, cursor: CGPoint(x: 900, y: 40), scale: 1, still: false)
+        for tick in 0...18 { _ = pet.step(t: Double(tick) / 30, dt: dt, world: towardRight) }
+        require(pet.isDashing, "The hold starts during a run")
+        let stopped = pet.position, rotation = pet.zRotation
+        let body = pet.layer.sublayers!.first!, sprite = body.sublayers!.first!
+        let pose = sprite.contents as AnyObject?, facing = body.affineTransform(), bounce = body.position
+        let head = pet.badge.position
+        let towardLeft = World(band: band, path: path, cursor: CGPoint(x: 100, y: 40), scale: 1, still: false)
+        pet.holdsBubble = true
+        for tick in 19...30 {
+            require(pet.step(t: Double(tick) / 30, dt: dt, world: towardLeft), "Held pets keep scene ticks for release")
+            require(pet.position == stopped && pet.zRotation == rotation && !pet.isDashing,
+                         "A held pet keeps its position and angle")
+            require(sprite.contents as AnyObject? === pose && body.affineTransform() == facing && body.position == bounce,
+                         "A held pet keeps its sprite, facing, and bounce")
+            require(pet.badge.position == head, "The head stays below the held bubble")
+        }
+
+        if startY == 40 {
+            var pointer = CGPoint(x: -1000, y: -1000)
+            let bubbles = SpeechBubbles(pointerLocation: { pointer })
+            defer { bubbles.hideAll() }
+            let agent = Agent(terminal_id: "held-frame", agent_status: "blocked", agent: "codex")
+            func layout() { bubbles.update(agents: [agent], pets: [agent.id: pet], texts: [:], origin: .zero, screen: screen) }
+            layout()
+            let heldFrame = bubbles.frame(for: agent.id)!
+            pointer = CGPoint(x: heldFrame.minX - 12, y: heldFrame.midY)
+            require(bubbles.holdsPet(agent.id, pointer: pointer), "Pointer movement within 24 pt holds the pet")
+            layout()
+            // A text arrival or poll can lay out again before the next scene tick.
+            layout()
+            require(bubbles.frame(for: agent.id) == heldFrame, "An extra layout above a stopped pet does not jump: \(heldFrame) -> \(String(describing: bubbles.frame(for: agent.id)))")
+            pointer = CGPoint(x: -1000, y: -1000)
+            pet.holdsBubble = bubbles.holdsPet(agent.id, pointer: pointer)
+            require(!pet.holdsBubble)
+            layout()
+            // Compare native frames because AppKit rounds panel origins to whole points.
+            let aboveHeadBubbles = SpeechBubbles(pointerLocation: { CGPoint(x: -1000, y: -1000) })
+            defer { aboveHeadBubbles.hideAll() }
+            aboveHeadBubbles.update(agents: [agent], pets: [agent.id: pet], texts: [:], origin: .zero, screen: screen)
+            let aboveHead = aboveHeadBubbles.frame(for: agent.id)!
+            require(bubbles.frame(for: agent.id) == heldFrame && heldFrame == aboveHead,
+                         "Release keeps the bubble above the stopped head: \(heldFrame), \(aboveHead), \(String(describing: bubbles.frame(for: agent.id)))")
+        }
+
+        pet.holdsBubble = false
+        _ = pet.step(t: 31.0 / 30, dt: dt, world: towardLeft)
+        let distance = hypot(pet.position.x - stopped.x, pet.position.y - stopped.y)
+        require(pet.isDashing && distance > 0 && distance <= acceleration * dt * dt + 0.001,
+                     "Release accelerates from rest without a jump")
+        if startY == 40 { require(pet.position.x < stopped.x, "Release chooses the pointer goal instead of the old goal") }
+        else { require(pet.position.y < stopped.y, "Release resumes the edge approach") }
+    }
+    print("PASS: Moving pets hold their pose and position, release without a bubble jump, and accelerate toward the pointer")
+
+    let band = CGRect(x: 400, y: 300, width: 200, height: 0)
+    let pet = Pet(id: "hop-hold", kind: .codex, spot: CGPoint(x: 0.5, y: 0), in: band)
+    pet.setStatus("blocked")
+    pet.holdsBubble = true
+    let world = World(band: band, path: path, cursor: CGPoint(x: 900, y: 40), scale: 1, still: false)
+    let initial = pet.position
+    _ = pet.step(t: 0, dt: dt, world: world)
+    _ = pet.step(t: 0.175, dt: dt, world: world)
+    require(pet.layer.sublayers!.first!.position.y > 0, "The startled hop plays during a hold")
+    _ = pet.step(t: 0.35, dt: dt, world: world)
+    require(pet.position == initial && pet.layer.sublayers!.first!.position.y == 0 && !pet.isDashing,
+                 "The hold takes effect after the startled hop lands")
+    print("PASS: A bubble hold lets the startled hop finish before the pet stops")
 }

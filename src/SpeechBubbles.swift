@@ -355,6 +355,13 @@ final class SpeechBubbles {
     private var collapseTask: DispatchWorkItem?
     private var refresh: (() -> Void)?
     private var previousPointer: CGPoint?
+    private let pointerLocation: () -> CGPoint
+
+    init(pointerLocation: @escaping () -> CGPoint = { NSEvent.mouseLocation }) {
+        self.pointerLocation = pointerLocation
+    }
+
+    func frame(for id: String) -> CGRect? { bubbles[id]?.panel.frame }
 
     func holdsPet(_ id: String, pointer: CGPoint) -> Bool {
         guard let bubble = bubbles[id], bubble.panel.isVisible else { return false }
@@ -382,7 +389,7 @@ final class SpeechBubbles {
         }
         let previewID = expandPreview ? (blocked.first { $0.machine != "local" } ?? blocked.first)?.id : nil
         let expandedID = selected ?? previewID
-        let pointer = NSEvent.mouseLocation
+        let pointer = pointerLocation()
         var occupied: [CGRect] = []
         let ordered = blocked.sorted { ($0.id == expandedID ? 0 : 1, $0.id) < ($1.id == expandedID ? 0 : 1, $1.id) }
         for agent in ordered {
@@ -434,7 +441,7 @@ final class SpeechBubbles {
             collapseTask?.cancel()
             let task = DispatchWorkItem { [weak self] in
                 guard let self, self.selected == id, let bubble = self.bubbles[id] else { return }
-                guard !bubble.panel.frame.contains(NSEvent.mouseLocation) else { return }
+                guard !bubble.panel.frame.contains(self.pointerLocation()) else { return }
                 self.selected = nil; self.collapseTask = nil
                 self.refresh?()
             }
