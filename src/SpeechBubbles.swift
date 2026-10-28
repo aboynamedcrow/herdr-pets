@@ -83,6 +83,15 @@ func expandedBubbleRect(from anchor: CGRect, size: CGSize, screen: CGRect,
                   width: size.width, height: size.height)
 }
 
+struct BubblePointerState {
+    let inside: Bool
+    let holds: Bool
+}
+
+func bubblePointerState(frame: CGRect, pointer: CGPoint) -> BubblePointerState {
+    BubblePointerState(inside: frame.contains(pointer), holds: frame.insetBy(dx: -24, dy: -24).contains(pointer))
+}
+
 enum BubbleClickTarget { case none, openAgent, textSelection, control }
 
 func bubbleClickTarget(inside: Bool, expanded: Bool, overText: Bool, overControl: Bool) -> BubbleClickTarget {
@@ -226,6 +235,7 @@ private final class SpeechBubble {
     var anchor: CGRect?
     var expandedFrame: CGRect?
     var canExpand = false
+    var pointerInside = false
     private var needsContentLayout = true
     private var contentCache: String?
     private var identityCache: (label: String?, agent: String?, machine: String, machineName: String?, title: String)?
@@ -270,6 +280,7 @@ private final class SpeechBubble {
 
     func update(agent: Agent, content: String?, machineName: String?, expanded: Bool, error: String?) {
         let body = content?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !canExpand && !body.isEmpty { pointerInside = false }
         canExpand = !body.isEmpty
         let expanded = expanded && canExpand
         if self.expanded != expanded { needsContentLayout = true }
@@ -342,6 +353,11 @@ final class SpeechBubbles {
     private var collapseTask: DispatchWorkItem?
     private var refresh: (() -> Void)?
 
+    func holdsPet(_ id: String, pointer: CGPoint) -> Bool {
+        guard let bubble = bubbles[id], bubble.panel.isVisible else { return false }
+        return bubblePointerState(frame: bubble.panel.frame, pointer: pointer).holds
+    }
+
     func hideAll() {
         collapseTask?.cancel(); collapseTask = nil
         bubbles.values.forEach { $0.panel.orderOut(nil) }
@@ -363,6 +379,7 @@ final class SpeechBubbles {
         }
         let previewID = expandPreview ? (blocked.first { $0.machine != "local" } ?? blocked.first)?.id : nil
         let expandedID = selected ?? previewID
+        let pointer = NSEvent.mouseLocation
         var occupied: [CGRect] = []
         let ordered = blocked.sorted { ($0.id == expandedID ? 0 : 1, $0.id) < ($1.id == expandedID ? 0 : 1, $1.id) }
         for agent in ordered {
@@ -375,23 +392,33 @@ final class SpeechBubbles {
             let size = bubble.preferredSize(body: texts[id] ?? "", title: bubble.header.stringValue, screen: screen.size)
             let rect: CGRect
             if bubble.expanded, let anchor = bubble.anchor {
-                let pointer = bubble.panel.frame.contains(NSEvent.mouseLocation) ? NSEvent.mouseLocation : nil
-                rect = expandedBubbleRect(from: anchor, size: size, screen: screen, previous: bubble.expandedFrame, pointer: pointer)
+                let containedPointer = bubble.panel.frame.contains(pointer) ? pointer : nil
+                rect = expandedBubbleRect(from: anchor, size: size, screen: screen, previous: bubble.expandedFrame, pointer: containedPointer)
                 bubble.expandedFrame = rect
             } else if !bubble.expanded, let anchor = bubble.anchor {
                 let placement = bubble.expandedFrame ?? anchor
                 let collapsed = CGRect(x: placement.minX, y: placement.maxY - size.height, width: size.width, height: size.height)
                 rect = expandedBubbleRect(from: collapsed, size: size, screen: screen)
                 bubble.anchor = nil; bubble.expandedFrame = nil
+            } else if holdsPet(id, pointer: pointer) {
+                let held = CGRect(origin: bubble.panel.frame.origin, size: size)
+                rect = expandedBubbleRect(from: held, size: size, screen: screen)
             } else { rect = bubbleRect(above: head, size: size, screen: screen, occupied: occupied) }
             occupied.append(rect)
             bubble.layout(in: rect)
             if !bubble.panel.isVisible { bubble.panel.orderFrontRegardless() }
         }
+        // Panel movement and tracking-area replacement can miss AppKit enter events.
+        for (id, bubble) in bubbles where bubble.panel.isVisible {
+            let inside = bubblePointerState(frame: bubble.panel.frame, pointer: pointer).inside
+            if inside != bubble.pointerInside { hover(id, inside: inside) }
+        }
     }
 
     private func hover(_ id: String, inside: Bool) {
-        guard let bubble = bubbles[id], bubble.canExpand else { return }
+        guard let bubble = bubbles[id], bubble.pointerInside != inside else { return }
+        bubble.pointerInside = inside
+        guard bubble.canExpand else { return }
         if inside {
             collapseTask?.cancel(); collapseTask = nil
             guard selected != id else { return }

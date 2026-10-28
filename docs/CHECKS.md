@@ -77,6 +77,9 @@ Use the menu panel to open Studio if you close the window.
 5. Check question bubbles on and off in both movement modes. Then move the pointer to each side of the screen. Attention pets must traverse screen edges.
 6. Check short and long bubbles. Their size must fit their text and controls within the screen.
    Hover over a collapsed question. It must expand under the pointer without moving away.
+   Approach within 24 pt. The bubble must hold its position. Its pet must keep its current goal.
+   Move beyond that margin. The bubble and pet must resume their normal movement.
+   Keep the pointer still where a bubble arrives. The bubble must expand once without a pointer move.
    Move the pointer away. It must collapse after about 0.3 seconds.
    Repeat near each screen edge while another app has focus. Check for repeated expansion and collapse.
    A bubble without question text must show only its identity. Hover must not expand it.
@@ -107,6 +110,9 @@ Quit the owned demo from its own menu. Leave the installed instance running.
 Use an existing blocked agent after the installed update.
 Compare its bubble with the visible terminal question. Do not copy question text into a report.
 Select **Open agent**. It must open the matching machine and native session.
+Change the screen while attention continues. The last good text must remain until a successful read replaces it.
+A failed read must keep that text. It must retry after two seconds without an agent poll.
+Keep the revision unchanged after a successful read. The reader must make no further text reads.
 When that agent resumes, its bubble must disappear.
 A missing or changed session must not open a different agent.
 Record native checks separately from synthetic fixtures and source inspection.

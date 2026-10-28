@@ -34,3 +34,11 @@ Herdr supports `--ttl-ms`. The set and clear commands above do not require a TTL
 It checks the pane and native session before and after the read. A changed revision rejects the result.
 `src/Scene.swift` keeps the native agent type for art and assignments during an attention hold.
 It uses `agent_session.agent` or the previous type from the same native session.
+
+The reader keeps the last good text for one native session while attention continues.
+A screen revision change or failed read does not clear that text.
+A successful read replaces it. A new session or the end of attention clears it.
+The reader reads only when text is missing or the last successful revision differs.
+It permits at most two reads at once and at least two seconds between reads for one agent.
+One main-thread timer retries pending reads after the delay. It stops when no retry remains.
+The reader runs Herdr commands on a background queue.

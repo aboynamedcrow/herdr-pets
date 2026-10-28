@@ -1,6 +1,38 @@
 import AppKit
 
 func bubbleSelfTest() {
+    let pointer = CGPoint(x: 140, y: 320)
+    let distant = CGRect(x: 300, y: 300, width: 100, height: 60)
+    let arrived = CGRect(x: 100, y: 300, width: 100, height: 60)
+    precondition(!bubblePointerState(frame: distant, pointer: pointer).inside)
+    precondition(bubblePointerState(frame: arrived, pointer: pointer).inside,
+                 "A bubble that moves under a fixed pointer enters hover")
+    for offset: CGFloat in [0, 23] {
+        let state = bubblePointerState(frame: arrived, pointer: CGPoint(x: arrived.minX - offset, y: arrived.midY))
+        precondition(state.holds, "The bubble holds inside its frame and 24 pt margin")
+    }
+    precondition(!bubblePointerState(frame: arrived, pointer: CGPoint(x: arrived.minX - 25, y: arrived.midY)).holds,
+                 "The bubble releases outside the margin")
+    precondition(!bubblePointerState(frame: arrived, pointer: CGPoint(x: arrived.minX - 1, y: arrived.midY)).inside,
+                 "The hold margin does not expand the bubble")
+    print("PASS: Bubble pointer checks detect arrival, hover exit, and the hold margin")
+
+    let band = CGRect(x: 0, y: 0, width: 500, height: 40)
+    let pet = Pet(id: "hold", kind: .codex, spot: CGPoint(x: 0.5, y: 0.5), in: band)
+    pet.setStatus("blocked")
+    let world = World(band: band, path: Perimeter(r: CGRect(x: 0, y: 0, width: 500, height: 700)),
+                      cursor: CGPoint(x: 200, y: 0), scale: 1, still: true)
+    _ = pet.step(t: 0, dt: 0, world: world)
+    let initial = pet.position
+    pet.holdsBubble = true
+    let movedPointer = World(band: band, path: world.path, cursor: CGPoint(x: 500, y: 500), scale: 1, still: true)
+    _ = pet.step(t: 1, dt: 0, world: movedPointer)
+    precondition(pet.position == initial, "A blocked pet keeps its goal during the hold")
+    pet.holdsBubble = false
+    _ = pet.step(t: 2, dt: 0, world: movedPointer)
+    precondition(pet.position != initial, "A blocked pet retargets after the hold")
+    print("PASS: Blocked pets keep their goal during the bubble hold and resume after release")
+
     var agent = Agent(terminal_id: "bubble", agent_status: "blocked", agent: "claude", label: "GLE IC-1834 Orchestrator task")
     precondition(compactBubbleTitle(agent: agent) == "IC-1834 · Orchestrator", "Short header: local identity")
     agent.machine = "ce447e49d7ef4c9eab6291e931074360"
@@ -75,17 +107,17 @@ func bubbleSelfTest() {
 
     let anchor = CGRect(x: 150, y: 700, width: 260, height: 54)
     let large = expandedBubbleRect(from: anchor, size: CGSize(width: 460, height: 420), screen: screen)
-    let pointer = CGPoint(x: large.maxX - 12, y: large.minY + 12)
+    let resizePointer = CGPoint(x: large.maxX - 12, y: large.minY + 12)
     let small = expandedBubbleRect(from: anchor, size: CGSize(width: 230, height: 98), screen: screen,
-                                   previous: large, pointer: pointer)
+                                   previous: large, pointer: resizePointer)
     precondition(small.width < large.width && small.height < large.height,
                  "Expanded size shrinks after shorter text arrives")
     precondition(small.width >= anchor.width && small.height >= anchor.height,
                  "Expanded size uses the collapsed frame as its minimum")
-    precondition(small.contains(pointer) && screen.contains(small),
+    precondition(small.contains(resizePointer) && screen.contains(small),
                  "Expanded shrink keeps the pointer inside the panel and clamps the screen")
     let repeated = expandedBubbleRect(from: anchor, size: CGSize(width: 230, height: 98), screen: screen,
-                                      previous: small, pointer: pointer)
+                                      previous: small, pointer: resizePointer)
     precondition(repeated == small, "Expanded shrink settles without moving on the next update")
     print("PASS: Expanded bubbles shrink from the collapsed minimum while retaining the pointer")
 

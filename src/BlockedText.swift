@@ -181,19 +181,25 @@ func openRemoteHerdrWindow(machine: String) -> Bool {
 
 final class BlockedTextPoller {
     typealias Reader = (Agent, @escaping (String?) -> Void) -> Void
+    typealias RetryScheduler = (Double, @escaping () -> Void) -> (() -> Void)
     private struct Entry {
         var agent: Agent
         var generation: Int
         var nextRead = -Double.infinity
         var text: String?
+        var successfulRevision: Int?
+        var needsRead: Bool { !agent.asleep && (text == nil || successfulRevision != agent.revision) }
     }
     private let clock: () -> Double
     private let reader: Reader
+    private let schedule: RetryScheduler
     private let onChange: ([String: String]) -> Void
     private var entries: [String: Entry] = [:]
     private var requests: [Int: String] = [:]
     private var sequence = 0
     private var pumping = false
+    private var cancelRetry: (() -> Void)?
+    private var retryAt: Double?
 
     init(clock: @escaping () -> Double = { ProcessInfo.processInfo.systemUptime },
          reader: @escaping Reader = { agent, complete in
@@ -201,18 +207,24 @@ final class BlockedTextPoller {
                  let text = readBlockedText(agent)
                  DispatchQueue.main.async { complete(text) }
              }
+         }, schedule: @escaping RetryScheduler = { delay, retry in
+             let timer = Timer(timeInterval: delay, repeats: false) { _ in retry() }
+             RunLoop.main.add(timer, forMode: .common)
+             return { timer.invalidate() }
          }, onChange: @escaping ([String: String]) -> Void) {
-        self.clock = clock; self.reader = reader; self.onChange = onChange
+        self.clock = clock; self.reader = reader; self.schedule = schedule; self.onChange = onChange
     }
 
+    deinit { cancelRetry?() }
+
     func update(_ agents: [Agent]) {
-        let blocked = agents.filter { $0.needsAttention && !$0.asleep && $0.sessionKey != nil }
+        let blocked = agents.filter { $0.needsAttention && $0.sessionKey != nil }
         let ids = Set(blocked.map(\.id))
         entries = entries.filter { ids.contains($0.key) }
         for agent in blocked {
-            if entries[agent.id]?.agent.sessionKey != agent.sessionKey || entries[agent.id]?.agent.revision != agent.revision {
+            if entries[agent.id]?.agent.sessionKey != agent.sessionKey {
                 sequence += 1
-                entries[agent.id] = Entry(agent: agent, generation: sequence)
+                entries[agent.id] = Entry(agent: agent, generation: sequence, nextRead: entries[agent.id]?.nextRead ?? -.infinity)
             } else { entries[agent.id]?.agent = agent }
         }
         publish(); pump()
@@ -223,9 +235,9 @@ final class BlockedTextPoller {
     private func pump() {
         guard !pumping else { return }
         pumping = true
-        defer { pumping = false }
+        defer { pumping = false; scheduleRetry() }
         for id in entries.keys.sorted() where requests.count < 2 {
-            guard var entry = entries[id], clock() >= entry.nextRead, !requests.values.contains(id) else { continue }
+            guard var entry = entries[id], entry.needsRead, clock() >= entry.nextRead, !requests.values.contains(id) else { continue }
             entry.nextRead = clock() + 2
             entries[id] = entry
             sequence += 1
@@ -235,11 +247,31 @@ final class BlockedTextPoller {
                 guard let self else { return }
                 self.requests[request] = nil
                 if self.entries[id]?.generation == generation {
-                    self.entries[id]?.text = text
+                    if let text {
+                        self.entries[id]?.text = text
+                        self.entries[id]?.successfulRevision = entry.agent.revision
+                    }
                     self.entries[id]?.nextRead = self.clock() + 2
                 }
                 self.publish(); self.pump()
             }
+        }
+    }
+
+    private func scheduleRetry() {
+        var deadline: Double?
+        if requests.count < 2 {
+            for (id, entry) in entries where entry.needsRead && !requests.values.contains(id) {
+                deadline = min(deadline ?? .infinity, entry.nextRead)
+            }
+        }
+        guard deadline != retryAt else { return }
+        cancelRetry?(); cancelRetry = nil; retryAt = deadline
+        guard let deadline else { return }
+        cancelRetry = schedule(max(0, deadline - clock())) { [weak self] in
+            guard let self else { return }
+            self.cancelRetry = nil; self.retryAt = nil
+            self.pump()
         }
     }
 }

@@ -190,6 +190,7 @@ final class Pet {
     private var restUntil = 0.0
     private var pendingEntryS: CGFloat?
     private var edgeS: CGFloat?   // Position on the edge path. nil when not on the edge
+    var holdsBubble = false
     private var goalS: CGFloat?
     private var lastBand: CGRect?
     private var lastBroadway = false
@@ -479,6 +480,7 @@ final class Pet {
 
     // Only retarget when the cursor moves 50pt+, so small cursor moves don't make it chase.
     private func blockGoal(_ w: World) -> CGFloat {
+        if holdsBubble, let goalS { return goalS }
         let wanted = w.path.wrap(w.path.nearest(w.cursor) + blockSide)
         if goalS.map({ abs(w.path.delta($0, wanted)) > 50 }) ?? true { goalS = wanted }
         return goalS!
