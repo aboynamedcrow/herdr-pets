@@ -127,7 +127,12 @@ func currentPane(_ expected: Agent, fetch: PaneFetcher = { boundedHerdrData($0, 
     return current
 }
 
-func readBlockedText(_ agent: Agent, fetch: PaneFetcher = { boundedHerdrData($0, limit: $1) }) -> String? {
+enum BlockedTextResult: Equatable {
+    case screen(String)
+    case fallback(String)
+}
+
+func readBlockedText(_ agent: Agent, fetch: PaneFetcher = { boundedHerdrData($0, limit: $1) }) -> BlockedTextResult? {
     guard let pane = agent.pane_id, let before = currentPane(agent, fetch: fetch), before.needsAttention else { return nil }
     let data = fetch(machineArguments(agent) + ["pane", "read", pane, "--source", "visible", "--lines", "100", "--format", "text"], 32_768)
     guard let after = currentPane(agent, fetch: fetch), after.needsAttention,
@@ -135,9 +140,9 @@ func readBlockedText(_ agent: Agent, fetch: PaneFetcher = { boundedHerdrData($0,
     // The daemon owns tokens.attention. See docs/ATTENTION.md for its contract.
     guard let data, let text = String(data: data, encoding: .utf8),
           let excerpt = latestAttentionText(text) else {
-        return after.attentionReason
+        return after.attentionReason.map { .fallback($0) }
     }
-    return excerpt
+    return .screen(excerpt)
 }
 
 func focusPetAgent(_ agent: Agent, complete: @escaping (Bool) -> Void) {
@@ -180,15 +185,22 @@ func openRemoteHerdrWindow(machine: String) -> Bool {
 }
 
 final class BlockedTextPoller {
-    typealias Reader = (Agent, @escaping (String?) -> Void) -> Void
+    typealias Reader = (Agent, @escaping (BlockedTextResult?) -> Void) -> Void
     typealias RetryScheduler = (Double, @escaping () -> Void) -> (() -> Void)
     private struct Entry {
         var agent: Agent
         var generation: Int
         var nextRead = -Double.infinity
-        var text: String?
+        var earliestRead = -Double.infinity
+        var screenText: String?
+        var fallbackText: String?
         var successfulRevision: Int?
-        var needsRead: Bool { !agent.asleep && (text == nil || successfulRevision != agent.revision) }
+        var retryDelay = 2.0
+        var retryPending = false
+        var text: String? { screenText ?? fallbackText }
+        var needsRead: Bool { !agent.asleep && (screenText == nil || agent.revision == nil || successfulRevision != agent.revision) }
+        // Successful reads without a revision stay on the agent poll, as in the base.
+        var needsTimer: Bool { needsRead && (agent.revision != nil || screenText == nil || retryPending) }
     }
     private let clock: () -> Double
     private let reader: Reader
@@ -224,8 +236,17 @@ final class BlockedTextPoller {
         for agent in blocked {
             if entries[agent.id]?.agent.sessionKey != agent.sessionKey {
                 sequence += 1
-                entries[agent.id] = Entry(agent: agent, generation: sequence, nextRead: entries[agent.id]?.nextRead ?? -.infinity)
-            } else { entries[agent.id]?.agent = agent }
+                let earliest = entries[agent.id]?.earliestRead ?? -.infinity
+                entries[agent.id] = Entry(agent: agent, generation: sequence, nextRead: earliest, earliestRead: earliest)
+            } else if var entry = entries[agent.id] {
+                if entry.agent.revision != agent.revision {
+                    entry.retryDelay = 2
+                    entry.retryPending = false
+                    entry.nextRead = entry.earliestRead
+                }
+                entry.agent = agent
+                entries[agent.id] = entry
+            }
         }
         publish(); pump()
     }
@@ -238,20 +259,32 @@ final class BlockedTextPoller {
         defer { pumping = false; scheduleRetry() }
         for id in entries.keys.sorted() where requests.count < 2 {
             guard var entry = entries[id], entry.needsRead, clock() >= entry.nextRead, !requests.values.contains(id) else { continue }
-            entry.nextRead = clock() + 2
+            entry.earliestRead = clock() + 2
+            entry.nextRead = entry.earliestRead
             entries[id] = entry
             sequence += 1
             let request = sequence, generation = entry.generation
             requests[request] = id
-            reader(entry.agent) { [weak self] text in
+            reader(entry.agent) { [weak self] result in
                 guard let self else { return }
                 self.requests[request] = nil
-                if self.entries[id]?.generation == generation {
-                    if let text {
-                        self.entries[id]?.text = text
-                        self.entries[id]?.successfulRevision = entry.agent.revision
+                if var current = self.entries[id], current.generation == generation {
+                    current.earliestRead = self.clock() + 2
+                    if case .screen(let text) = result {
+                        current.screenText = text
+                        current.successfulRevision = entry.agent.revision
+                        current.retryDelay = 2
+                        current.retryPending = false
+                        current.nextRead = current.earliestRead
+                    } else {
+                        if case .fallback(let text) = result { current.fallbackText = text }
+                        let sameRevision = current.agent.revision == entry.agent.revision
+                        let delay = sameRevision ? current.retryDelay : 2
+                        current.nextRead = self.clock() + delay
+                        current.retryDelay = sameRevision ? min(16, delay * 2) : 2
+                        current.retryPending = true
                     }
-                    self.entries[id]?.nextRead = self.clock() + 2
+                    self.entries[id] = current
                 }
                 self.publish(); self.pump()
             }
@@ -261,7 +294,7 @@ final class BlockedTextPoller {
     private func scheduleRetry() {
         var deadline: Double?
         if requests.count < 2 {
-            for (id, entry) in entries where entry.needsRead && !requests.values.contains(id) {
+            for (id, entry) in entries where entry.needsTimer && !requests.values.contains(id) {
                 deadline = min(deadline ?? .infinity, entry.nextRead)
             }
         }

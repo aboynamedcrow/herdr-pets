@@ -37,8 +37,13 @@ It uses `agent_session.agent` or the previous type from the same native session.
 
 The reader keeps the last good text for one native session while attention continues.
 A screen revision change or failed read does not clear that text.
-A successful read replaces it. A new session or the end of attention clears it.
-The reader reads only when text is missing or the last successful revision differs.
+A screen excerpt replaces it. The reader records that revision as read.
+An attention fallback appears only when no screen text exists. It never records a revision as read or stops retries.
+A new session or the end of attention clears stored text.
+The reader reads when screen text is missing or the last successful revision differs.
+Without a revision, successful reads cannot record a revision. They repeat on agent polls, at least two seconds apart.
 It permits at most two reads at once and at least two seconds between reads for one agent.
+Failed reads retry after 2, 4, 8, then 16 seconds at most for one revision.
+A successful screen read or a new revision resets the delay to two seconds.
 One main-thread timer retries pending reads after the delay. It stops when no retry remains.
 The reader runs Herdr commands on a background queue.

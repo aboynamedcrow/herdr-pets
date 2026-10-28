@@ -205,7 +205,8 @@ func studioSelfTest() {
 }
 
 private func blockedTextSelfTest() {
-    var callbacks: [(Agent, (String?) -> Void)] = []
+    blockedTextRetrySelfTest()
+    var callbacks: [(Agent, (BlockedTextResult?) -> Void)] = []
     var text: [String: String] = [:]
     var now = 0.0
     var reads = 0
@@ -221,7 +222,7 @@ private func blockedTextSelfTest() {
     var a = Agent(terminal_id: "same", agent_status: "blocked", agent: "codex", machine: "local", pane_id: "w1:p1",
                   agent_session: AgentSession(value: "one", kind: "id"), revision: 1)
     poller.update([a])
-    callbacks.removeFirst().1("FIRST QUESTION")
+    callbacks.removeFirst().1(.screen("FIRST QUESTION"))
     for tick in 1..<30 { now = Double(tick) * 2; poller.update([a]) }
     precondition(reads == 1 && callbacks.isEmpty && retry == nil, "A good unchanged revision needs one read over 60 seconds")
     print("PASS: Unchanged blocked text needs 1 read (3 Herdr calls) over 60 seconds")
@@ -243,7 +244,7 @@ private func blockedTextSelfTest() {
     retry = nil
     fire()
     precondition(callbacks.count == 1 && callbacks[0].0.revision == 2, "The timer retries without an agent poll")
-    callbacks.removeFirst().1("SECOND QUESTION")
+    callbacks.removeFirst().1(.screen("SECOND QUESTION"))
     precondition(text[a.id] == "SECOND QUESTION" && retry == nil, "Success replaces text and stops the timer")
 
     now = 64
@@ -252,7 +253,7 @@ private func blockedTextSelfTest() {
     let previousRevision = callbacks.removeFirst().1
     a.revision = 4
     poller.update([a])
-    previousRevision("THIRD QUESTION")
+    previousRevision(.screen("THIRD QUESTION"))
     precondition(text[a.id] == "THIRD QUESTION" && retry?.deadline == 66, "A valid read survives a later observed revision")
     now = 66
     let revisionRetry = retry!.fire
@@ -262,13 +263,13 @@ private func blockedTextSelfTest() {
     a.agent_session = AgentSession(value: "two", kind: "id")
     poller.update([a])
     precondition(text.isEmpty, "A new session clears the text")
-    callbacks.removeFirst().1("STALE SESSION")
+    callbacks.removeFirst().1(.screen("STALE SESSION"))
     precondition(text.isEmpty && callbacks.isEmpty && retry?.deadline == 68, "An old session cannot publish or bypass the read interval")
     now = 68
     let sessionRetry = retry!.fire
     retry = nil
     sessionRetry()
-    callbacks.removeFirst().1("CURRENT SESSION")
+    callbacks.removeFirst().1(.screen("CURRENT SESSION"))
     precondition(text[a.id] == "CURRENT SESSION" && retry == nil)
     print("PASS: Revisions and nil reads keep text, session changes clear it, and retries need no agent poll")
 
@@ -281,8 +282,8 @@ private func blockedTextSelfTest() {
     let remoteDone = callbacks.first { $0.0.machine == "remote" }!.1
     callbacks.removeAll()
     poller.update([remote])
-    localLate("STALE LOCAL")
-    remoteDone("REMOTE QUESTION")
+    localLate(.screen("STALE LOCAL"))
+    remoteDone(.screen("REMOTE QUESTION"))
     precondition(text[a.id] == nil && text[remote.id] == "REMOTE QUESTION")
     let idle = Agent(terminal_id: remote.terminal_id, agent_status: "working", agent: remote.agent, machine: remote.machine,
                      pane_id: remote.pane_id, agent_session: remote.agent_session)
@@ -295,6 +296,65 @@ private func blockedTextSelfTest() {
     poller.update([])
     precondition(text.isEmpty && retry == nil, "Removing a pending entry stops its timer")
     print("PASS: Blocked text rejects disappeared panes and changed status, with separate machines and timer cleanup")
+}
+
+private func blockedTextRetrySelfTest() {
+    var now = 0.0
+    var callbacks: [(BlockedTextResult?) -> Void] = []
+    var retry: (deadline: Double, fire: () -> Void)?
+    var texts: [String: String] = [:]
+    let poller = BlockedTextPoller(clock: { now }, reader: { _, done in callbacks.append(done) }, schedule: { delay, fire in
+        precondition(retry == nil)
+        retry = (now + delay, fire)
+        return { retry = nil }
+    }, onChange: { texts = $0 })
+    var agent = Agent(terminal_id: "retry", agent_status: "blocked", agent: "codex", pane_id: "w1:p1",
+                      agent_session: AgentSession(value: "session", kind: "id"), revision: 1)
+    func fire(at deadline: Double, result: BlockedTextResult?) {
+        precondition(retry?.deadline == deadline, "A failed read uses its backoff deadline")
+        now = deadline
+        let event = retry!.fire
+        retry = nil
+        event()
+        precondition(callbacks.count == 1)
+        callbacks.removeFirst()(result)
+    }
+    poller.update([agent])
+    callbacks.removeFirst()(nil)
+    for deadline in [2.0, 6, 14, 30, 46] { fire(at: deadline, result: nil) }
+    precondition(retry?.deadline == 62, "Backoff stops growing at 16 seconds")
+    now = 48
+    agent.revision = 2
+    poller.update([agent])
+    precondition(callbacks.count == 1, "A new revision ends the old backoff after the two-second cooldown")
+    callbacks.removeFirst()(nil)
+    precondition(retry?.deadline == 50, "A new revision resets the retry delay to two seconds")
+    fire(at: 50, result: .screen("RECOVERED QUESTION"))
+    precondition(texts[agent.id] == "RECOVERED QUESTION" && retry == nil)
+    now = 52
+    agent.revision = 3
+    poller.update([agent])
+    callbacks.removeFirst()(nil)
+    precondition(retry?.deadline == 54, "Success resets the retry delay to two seconds")
+    poller.update([])
+    precondition(retry == nil)
+    print("PASS: Failed reads back off by 2, 4, 8, and 16 seconds, with revision and success resets")
+
+    agent.revision = nil
+    now = 54
+    poller.update([agent])
+    callbacks.removeFirst()(.screen("UNCONFIRMED FIRST"))
+    precondition(retry == nil, "A successful read without a revision uses agent polling")
+    now = 55
+    poller.update([agent])
+    precondition(callbacks.isEmpty, "A missing revision does not bypass the cooldown")
+    now = 56
+    poller.update([agent])
+    precondition(callbacks.count == 1, "A missing revision permits another read on the next eligible poll")
+    callbacks.removeFirst()(.screen("UNCONFIRMED SECOND"))
+    precondition(texts[agent.id] == "UNCONFIRMED SECOND" && retry == nil)
+    poller.update([])
+    print("PASS: Panes without revisions refresh on eligible polls without a success timer")
 }
 
 private func reviewRegressionSelfTest(_ sample: CustomPet) {
@@ -335,7 +395,7 @@ private func reviewRegressionSelfTest(_ sample: CustomPet) {
     if backup != original { failures.append("Repair after restart replaced the valid backup.") }
 
     var clock = 0.0
-    var requests: [(Agent, (String?) -> Void)] = []
+    var requests: [(Agent, (BlockedTextResult?) -> Void)] = []
     let queue = BlockedTextPoller(clock: { clock }, reader: { requests.append(($0, $1)) }, onChange: { _ in })
     let agents = ["A", "B", "C"].map { Agent(terminal_id: $0, agent_status: "blocked", agent: "codex", pane_id: "w1:p" + $0, agent_session: AgentSession(value: $0, kind: "id")) }
     queue.update(agents)

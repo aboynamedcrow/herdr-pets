@@ -8,14 +8,29 @@ func bubbleSelfTest() {
     precondition(bubblePointerState(frame: arrived, pointer: pointer).inside,
                  "A bubble that moves under a fixed pointer enters hover")
     for offset: CGFloat in [0, 23] {
-        let state = bubblePointerState(frame: arrived, pointer: CGPoint(x: arrived.minX - offset, y: arrived.midY))
+        let state = bubblePointerState(frame: arrived, pointer: CGPoint(x: arrived.minX - offset, y: arrived.midY), previousPointer: pointer)
         precondition(state.holds, "The bubble holds inside its frame and 24 pt margin")
     }
     precondition(!bubblePointerState(frame: arrived, pointer: CGPoint(x: arrived.minX - 25, y: arrived.midY)).holds,
                  "The bubble releases outside the margin")
     precondition(!bubblePointerState(frame: arrived, pointer: CGPoint(x: arrived.minX - 1, y: arrived.midY)).inside,
                  "The hold margin does not expand the bubble")
-    print("PASS: Bubble pointer checks detect arrival, hover exit, and the hold margin")
+    let near = CGPoint(x: arrived.minX - 12, y: arrived.midY)
+    precondition(!bubblePointerState(frame: arrived, pointer: near, previousPointer: near).holds,
+                 "A still pointer outside the frame does not stop an approaching bubble")
+    precondition(!bubblePointerState(frame: arrived, pointer: near).holds,
+                 "The first layout does not assume pointer movement")
+    precondition(bubblePointerState(frame: arrived, pointer: pointer, previousPointer: pointer).holds,
+                 "A still pointer inside the frame holds the bubble")
+    var approaching = CGRect(x: 200, y: 300, width: 60, height: 60)
+    for _ in 0..<6 {
+        precondition(!bubblePointerState(frame: approaching, pointer: pointer, previousPointer: pointer).holds,
+                     "A moving bubble crosses the margin beneath a still pointer")
+        approaching.origin.x -= 10
+    }
+    precondition(bubblePointerState(frame: approaching, pointer: pointer, previousPointer: pointer).inside,
+                 "The approaching bubble reaches the still pointer")
+    print("PASS: Bubble hold requires pointer entry or movement within the margin, and permits stationary-pointer arrival")
 
     let band = CGRect(x: 0, y: 0, width: 500, height: 40)
     let pet = Pet(id: "hold", kind: .codex, spot: CGPoint(x: 0.5, y: 0.5), in: band)

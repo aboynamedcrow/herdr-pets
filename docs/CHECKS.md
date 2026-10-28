@@ -77,7 +77,10 @@ Use the menu panel to open Studio if you close the window.
 5. Check question bubbles on and off in both movement modes. Then move the pointer to each side of the screen. Attention pets must traverse screen edges.
 6. Check short and long bubbles. Their size must fit their text and controls within the screen.
    Hover over a collapsed question. It must expand under the pointer without moving away.
-   Approach within 24 pt. The bubble must hold its position. Its pet must keep its current goal.
+   Move the pointer within 24 pt. The bubble must hold its position while the pointer moves.
+   Its pet must keep its current goal during the hold.
+   Stop the pointer outside the frame. The bubble must continue its approach.
+   Keep the pointer inside the frame. The bubble must hold even when the pointer stops.
    Move beyond that margin. The bubble and pet must resume their normal movement.
    Keep the pointer still where a bubble arrives. The bubble must expand once without a pointer move.
    Move the pointer away. It must collapse after about 0.3 seconds.
@@ -111,8 +114,13 @@ Use an existing blocked agent after the installed update.
 Compare its bubble with the visible terminal question. Do not copy question text into a report.
 Select **Open agent**. It must open the matching machine and native session.
 Change the screen while attention continues. The last good text must remain until a successful read replaces it.
-A failed read must keep that text. It must retry after two seconds without an agent poll.
-Keep the revision unchanged after a successful read. The reader must make no further text reads.
+A failed read must keep that text. Its first retry must occur after two seconds without an agent poll.
+Further failures for that revision must use delays of 4, 8, then 16 seconds at most.
+A successful screen read or a new revision must reset the delay to two seconds.
+An attention fallback must not replace screen text or stop retries.
+Restore the screen reader without a revision change. The next retry must replace the fallback with the full question.
+Keep a known revision unchanged after a screen excerpt. The reader must make no further text reads.
+Without a revision, the reader must check again on an eligible agent poll, at least two seconds later.
 When that agent resumes, its bubble must disappear.
 A missing or changed session must not open a different agent.
 Record native checks separately from synthetic fixtures and source inspection.

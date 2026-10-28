@@ -163,7 +163,9 @@ The done animation and checkmark remain the same.
 
 Broadway shows blocked text in a bubble above each pet.
 Bubbles start collapsed. Hover over a question to read its text and choices.
-A bubble holds its position while the pointer is inside it or within 24 pt.
+A bubble holds its position while the pointer is inside it.
+It also holds while the pointer moves within 24 pt of its frame.
+A still pointer outside the frame lets the bubble continue its approach.
 Its pet keeps its current goal during the hold.
 A bubble that moves under the pointer also expands.
 Move the pointer away to collapse it after a short delay.
@@ -180,9 +182,13 @@ The app checks the machine, terminal, native session, and screen revision before
 **Open agent** checks the session again before focusing its pane.
 The bubble keeps its last good question text through screen changes and failed reads.
 It clears that text when attention ends or the native session changes.
-The reader checks a screen again only when its revision changes or no text exists.
-Failed reads retry after 2 seconds, even without an agent poll.
-If no read returned text, the bubble shows only the agent identity.
+The reader checks a screen again when its revision changes or no screen text exists.
+If the server supplies no revision, successful reads repeat on agent polls, at least 2 seconds apart.
+A short attention reason can appear until the first screen excerpt arrives.
+That fallback never replaces stored screen text or stops retries.
+Failed reads retry without an agent poll. The delays are 2, 4, 8, then 16 seconds at most.
+A successful screen read or a new revision resets the delay to 2 seconds.
+If neither screen text nor an attention reason exists, the bubble shows only the agent identity.
 Answers remain in the agent. The app keeps question text in memory.
 
 Movement reference: [Pet Town](https://github.com/abhishek944/pet-town).

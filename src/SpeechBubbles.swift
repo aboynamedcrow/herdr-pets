@@ -88,8 +88,10 @@ struct BubblePointerState {
     let holds: Bool
 }
 
-func bubblePointerState(frame: CGRect, pointer: CGPoint) -> BubblePointerState {
-    BubblePointerState(inside: frame.contains(pointer), holds: frame.insetBy(dx: -24, dy: -24).contains(pointer))
+func bubblePointerState(frame: CGRect, pointer: CGPoint, previousPointer: CGPoint? = nil) -> BubblePointerState {
+    let inside = frame.contains(pointer)
+    let moved = previousPointer != nil && previousPointer != pointer
+    return BubblePointerState(inside: inside, holds: inside || (moved && frame.insetBy(dx: -24, dy: -24).contains(pointer)))
 }
 
 enum BubbleClickTarget { case none, openAgent, textSelection, control }
@@ -352,16 +354,17 @@ final class SpeechBubbles {
     private var focusError: (id: String, message: String)?
     private var collapseTask: DispatchWorkItem?
     private var refresh: (() -> Void)?
+    private var previousPointer: CGPoint?
 
     func holdsPet(_ id: String, pointer: CGPoint) -> Bool {
         guard let bubble = bubbles[id], bubble.panel.isVisible else { return false }
-        return bubblePointerState(frame: bubble.panel.frame, pointer: pointer).holds
+        return bubblePointerState(frame: bubble.panel.frame, pointer: pointer, previousPointer: previousPointer).holds
     }
 
     func hideAll() {
         collapseTask?.cancel(); collapseTask = nil
         bubbles.values.forEach { $0.panel.orderOut(nil) }
-        bubbles.removeAll(); agents.removeAll(); selected = nil; focusError = nil; refresh = nil
+        bubbles.removeAll(); agents.removeAll(); selected = nil; focusError = nil; refresh = nil; previousPointer = nil
     }
 
     func update(agents: [Agent], pets: [String: Pet], texts: [String: String], origin: CGPoint, screen: CGRect,
@@ -408,6 +411,7 @@ final class SpeechBubbles {
             bubble.layout(in: rect)
             if !bubble.panel.isVisible { bubble.panel.orderFrontRegardless() }
         }
+        previousPointer = pointer
         // Panel movement and tracking-area replacement can miss AppKit enter events.
         for (id, bubble) in bubbles where bubble.panel.isVisible {
             let inside = bubblePointerState(frame: bubble.panel.frame, pointer: pointer).inside
