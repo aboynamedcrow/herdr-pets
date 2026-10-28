@@ -1,25 +1,52 @@
 import AppKit
 
 let questionPreviewLineCount = 1
-private let bubbleBlue = NSColor(srgbRed: 10 / 255, green: 132 / 255, blue: 1, alpha: 1)
+private enum BubbleMetrics {
+    static let headerFont = NSFont.systemFont(ofSize: 12, weight: .semibold)
+    static let bodyFont = NSFont.systemFont(ofSize: 13)
+    static let buttonFont = NSFont.systemFont(ofSize: 12, weight: .semibold)
+    static let cornerRadius: CGFloat = 20
+    static let horizontalPadding: CGFloat = 14
+    static let verticalPadding: CGFloat = 10
+    static let headerHeight: CGFloat = 18
+    static let previewHeight = CGFloat(questionPreviewLineCount) * 18
+    static let headerGap: CGFloat = 4
+    static let buttonGap: CGFloat = 8
+    static let buttonWidth: CGFloat = 110
+    static let buttonHeight: CGFloat = {
+        let button = NSButton(title: "Open remote", target: nil, action: nil)
+        button.font = buttonFont
+        if #available(macOS 26.0, *) { button.bezelStyle = .glass }
+        else { button.bezelStyle = .rounded }
+        return ceil(button.fittingSize.height)
+    }()
+    static let textFieldInsets: CGFloat = 4
+    static let minimumCollapsedWidth: CGFloat = 100
+    static let maximumCollapsedWidth: CGFloat = 340
+    static let minimumExpandedWidth: CGFloat = 230
+    static let maximumExpandedWidth: CGFloat = 480
+    static var horizontalInsets: CGFloat { horizontalPadding * 2 }
+    static var headerOnlyHeight: CGFloat { verticalPadding * 2 + headerHeight }
+    static var expandedInsets: CGFloat { headerOnlyHeight + headerGap + buttonGap + buttonHeight }
+}
 
 func questionBubbleSize(text: String, title: String, expanded: Bool, screen: CGSize) -> CGSize {
     let available = CGSize(width: max(1, screen.width - 12), height: max(1, screen.height - 12))
-    let font = NSFont.systemFont(ofSize: 13)
-    let headerFont = NSFont.systemFont(ofSize: 11, weight: .semibold)
-    let textFieldInsets: CGFloat = 4
-    let titleWidth = ceil((title as NSString).size(withAttributes: [.font: headerFont]).width) + textFieldInsets
+    let titleWidth = ceil((title as NSString).size(withAttributes: [.font: BubbleMetrics.headerFont]).width) + BubbleMetrics.textFieldInsets
     if !expanded {
-        let previewWidth = ceil((attentionQuestionPreview(text) as NSString).size(withAttributes: [.font: font]).width) + textFieldInsets
-        let width = min(available.width, 340, max(100, max(titleWidth, previewWidth) + 28))
-        let height: CGFloat = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 32 : 36 + CGFloat(questionPreviewLineCount) * 18
+        let previewWidth = ceil((attentionQuestionPreview(text) as NSString).size(withAttributes: [.font: BubbleMetrics.bodyFont]).width) + BubbleMetrics.textFieldInsets
+        let width = min(available.width, BubbleMetrics.maximumCollapsedWidth,
+                        max(BubbleMetrics.minimumCollapsedWidth, max(titleWidth, previewWidth) + BubbleMetrics.horizontalInsets))
+        let height = BubbleMetrics.headerOnlyHeight + (text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0 : BubbleMetrics.headerGap + BubbleMetrics.previewHeight)
         return CGSize(width: width, height: min(available.height, height))
     }
     let body = joinedQuestionLines(text)
-    let lineWidth = body.components(separatedBy: "\n").map { ($0 as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
-    let width = min(available.width, 480, max(230, ceil(lineWidth) + 28, min(340, titleWidth + 28)))
-    let measured = (body as NSString).boundingRect(with: CGSize(width: max(1, width - 28), height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: [.font: font])
-    return CGSize(width: width, height: min(available.height, max(98, ceil(measured.height) + 82)))
+    let lineWidth = body.components(separatedBy: "\n").map { ($0 as NSString).size(withAttributes: [.font: BubbleMetrics.bodyFont]).width }.max() ?? 0
+    let width = min(available.width, BubbleMetrics.maximumExpandedWidth,
+                    max(BubbleMetrics.minimumExpandedWidth, ceil(lineWidth) + BubbleMetrics.horizontalInsets,
+                        min(BubbleMetrics.maximumCollapsedWidth, titleWidth + BubbleMetrics.horizontalInsets)))
+    let measured = (body as NSString).boundingRect(with: CGSize(width: max(1, width - BubbleMetrics.horizontalInsets), height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: [.font: BubbleMetrics.bodyFont])
+    return CGSize(width: width, height: min(available.height, max(BubbleMetrics.previewHeight, ceil(measured.height)) + BubbleMetrics.expandedInsets))
 }
 
 func compactBubbleTitle(agent: Agent, machineName: String? = nil) -> String {
@@ -94,12 +121,9 @@ private final class BubbleButton: NSButton {
     convenience init(_ title: String, action: @escaping () -> Void) {
         self.init(title: title, target: nil, action: nil)
         self.invoke = action; target = self; self.action = #selector(run)
-        isBordered = false
-        wantsLayer = true
-        layer?.backgroundColor = NSColor.white.cgColor
-        layer?.cornerRadius = 10
-        font = .systemFont(ofSize: 12, weight: .semibold)
-        contentTintColor = bubbleBlue
+        if #available(macOS 26.0, *) { bezelStyle = .glass }
+        else { bezelStyle = .rounded }
+        font = BubbleMetrics.buttonFont
     }
     override var needsPanelToBecomeKey: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -181,25 +205,38 @@ private final class SpeechBubble {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         panel.hidesOnDeactivate = false
         panel.becomesKeyOnlyIfNeeded = true
-        surface.wantsLayer = true
-        surface.layer?.backgroundColor = bubbleBlue.cgColor
-        surface.layer?.cornerRadius = 17
         surface.hover = hover; surface.click = focus
-        panel.contentView = surface
+        surface.autoresizingMask = [.width, .height]
+        if #available(macOS 26.0, *) {
+            let glass = NSGlassEffectView()
+            glass.style = .regular
+            glass.cornerRadius = BubbleMetrics.cornerRadius
+            glass.contentView = surface
+            panel.contentView = glass
+        } else {
+            let effect = NSVisualEffectView()
+            effect.material = .popover
+            effect.blendingMode = .behindWindow
+            effect.state = .active
+            effect.wantsLayer = true
+            effect.layer?.cornerRadius = BubbleMetrics.cornerRadius
+            effect.layer?.masksToBounds = true
+            effect.addSubview(surface)
+            panel.contentView = effect
+        }
         open = BubbleButton("Open agent", action: focus)
         surface.body = text; surface.openControl = open
-        header.font = .systemFont(ofSize: 11, weight: .semibold)
-        header.textColor = .white
+        header.font = BubbleMetrics.headerFont
+        header.textColor = .labelColor
         header.lineBreakMode = .byTruncatingTail
         header.maximumNumberOfLines = 1
-        preview.font = .systemFont(ofSize: 13)
-        preview.textColor = .white
+        preview.font = BubbleMetrics.bodyFont
+        preview.textColor = .secondaryLabelColor
         preview.maximumNumberOfLines = questionPreviewLineCount
         preview.lineBreakMode = .byTruncatingTail
         text.isEditable = false; text.isSelectable = true; text.drawsBackground = false
-        text.font = .systemFont(ofSize: 13)
-        text.textColor = .white; text.textContainerInset = CGSize(width: 0, height: 0)
-        text.selectedTextAttributes = [.backgroundColor: NSColor.white, .foregroundColor: bubbleBlue]
+        text.font = BubbleMetrics.bodyFont
+        text.textColor = .labelColor; text.textContainerInset = CGSize(width: 0, height: 0)
         text.textContainer?.lineFragmentPadding = 0
         text.isRichText = false; text.importsGraphics = false
         text.isContinuousSpellCheckingEnabled = false; text.isGrammarCheckingEnabled = false
@@ -264,14 +301,19 @@ private final class SpeechBubble {
         guard resized || needsContentLayout else { return }
         needsContentLayout = false
         let width = rect.width, height = rect.height
-        header.frame = CGRect(x: 14, y: height - 25, width: max(1, width - 28), height: 16)
-        preview.frame = CGRect(x: 14, y: 9, width: max(1, width - 28), height: CGFloat(questionPreviewLineCount) * 18)
-        scroll.frame = CGRect(x: 14, y: 44, width: max(1, width - 28), height: max(1, height - 82))
+        surface.frame = panel.contentView?.bounds ?? CGRect(origin: .zero, size: rect.size)
+        let x = BubbleMetrics.horizontalPadding
+        let contentWidth = max(1, width - BubbleMetrics.horizontalInsets)
+        let headerY = height - BubbleMetrics.verticalPadding - BubbleMetrics.headerHeight
+        header.frame = CGRect(x: x, y: headerY, width: contentWidth, height: BubbleMetrics.headerHeight)
+        preview.frame = CGRect(x: x, y: BubbleMetrics.verticalPadding, width: contentWidth, height: BubbleMetrics.previewHeight)
+        let bodyY = BubbleMetrics.verticalPadding + BubbleMetrics.buttonHeight + BubbleMetrics.buttonGap
+        scroll.frame = CGRect(x: x, y: bodyY, width: contentWidth, height: max(1, height - BubbleMetrics.expandedInsets))
         text.setFrameSize(CGSize(width: max(1, scroll.contentSize.width), height: max(text.frame.height, scroll.contentSize.height)))
         text.textContainer?.containerSize = CGSize(width: max(1, scroll.contentSize.width), height: .greatestFiniteMagnitude)
         text.textContainer?.widthTracksTextView = true
         text.sizeToFit()
-        open.frame = CGRect(x: 14, y: 10, width: min(110, max(1, width - 28)), height: 26)
+        open.frame = CGRect(x: x, y: BubbleMetrics.verticalPadding, width: min(BubbleMetrics.buttonWidth, contentWidth), height: BubbleMetrics.buttonHeight)
     }
 }
 
