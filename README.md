@@ -166,7 +166,9 @@ Bubbles start collapsed. Hover over a question to read its text and choices.
 A bubble holds its position while the pointer is inside it.
 It also holds while the pointer moves within 24 pt of its frame.
 A still pointer outside the frame lets the bubble continue its approach.
-Its pet keeps its current goal during the hold.
+Its pet stops in place during the hold.
+When the hold ends, the pet accelerates toward the pointer again.
+A hold during the startled hop takes effect after the hop.
 A bubble that moves under the pointer also expands.
 Move the pointer away to collapse it after a short delay.
 Click the header or glass outside the body text to open the agent. A collapsed bubble also opens on click.

@@ -254,6 +254,15 @@ final class Pet {
         defer { if let bounds = w.usableBounds { keepArt(in: bounds) }; render() }
         if statusSince == nil { statusSince = t }
         let age = t - statusSince!
+        if status == "blocked" && holdsBubble && (w.still || edgeS != nil || age >= 0.35) {
+            // Finish the startled hop before holding. Keep a running pose fixed.
+            if edgeS == nil && pendingEntryS == nil { bounce = 0 }
+            runSpeed = 0
+            goalS = nil
+            isDashing = false
+            // Keep the scene's existing ticks so pointer departure can release the hold.
+            return !w.still
+        }
         scale = w.scale
         movementBounds = w.usableBounds
         bounce = 0
@@ -480,7 +489,6 @@ final class Pet {
 
     // Only retarget when the cursor moves 50pt+, so small cursor moves don't make it chase.
     private func blockGoal(_ w: World) -> CGFloat {
-        if holdsBubble, let goalS { return goalS }
         let wanted = w.path.wrap(w.path.nearest(w.cursor) + blockSide)
         if goalS.map({ abs(w.path.delta($0, wanted)) > 50 }) ?? true { goalS = wanted }
         return goalS!

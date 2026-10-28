@@ -78,10 +78,12 @@ Use the menu panel to open Studio if you close the window.
 6. Check short and long bubbles. Their size must fit their text and controls within the screen.
    Hover over a collapsed question. It must expand under the pointer without moving away.
    Move the pointer within 24 pt. The bubble must hold its position while the pointer moves.
-   Its pet must keep its current goal during the hold.
+   Its pet must stop in place. Its pose and direction must stay the same.
+   The bubble must stay above its head without a jump when the hold ends.
+   Hold during the startled hop. The pet must stop after the hop.
    Stop the pointer outside the frame. The bubble must continue its approach.
    Keep the pointer inside the frame. The bubble must hold even when the pointer stops.
-   Move beyond that margin. The bubble and pet must resume their normal movement.
+   Move beyond that margin. The pet must accelerate toward the pointer again.
    Keep the pointer still where a bubble arrives. The bubble must expand once without a pointer move.
    Move the pointer away. It must collapse after about 0.3 seconds.
    Repeat near each screen edge while another app has focus. Check for repeated expansion and collapse.
