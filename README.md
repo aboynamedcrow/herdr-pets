@@ -163,7 +163,12 @@ The done animation and checkmark remain the same.
 
 Broadway shows blocked text in a bubble above each pet.
 Bubbles start collapsed. Hover over a question to read its text and choices.
-Move the pointer away to collapse it.
+A bubble holds its position while the pointer is inside it.
+It also holds while the pointer moves within 24 pt of its frame.
+A still pointer outside the frame lets the bubble continue its approach.
+Its pet keeps its current goal during the hold.
+A bubble that moves under the pointer also expands.
+Move the pointer away to collapse it after a short delay.
 Click the header or glass outside the body text to open the agent. A collapsed bubble also opens on click.
 Click or drag within the body text to select it. Use **Open agent** or **Open remote** to open from there.
 Text selection can take keyboard focus. Click the other app to return keyboard input to it.
@@ -175,7 +180,15 @@ Remote bubbles append the readable machine name when one exists.
 Herdr 0.9.5 supplies the visible terminal excerpt.
 The app checks the machine, terminal, native session, and screen revision before it accepts a read.
 **Open agent** checks the session again before focusing its pane.
-If the text is unavailable, the bubble shows only the agent identity.
+The bubble keeps its last good question text through screen changes and failed reads.
+It clears that text when attention ends or the native session changes.
+The reader checks a screen again when its revision changes or no screen text exists.
+If the server supplies no revision, successful reads repeat on agent polls, at least 2 seconds apart.
+A short attention reason can appear until the first screen excerpt arrives.
+That fallback never replaces stored screen text or stops retries.
+Failed reads retry without an agent poll. The delays are 2, 4, 8, then 16 seconds at most.
+A successful screen read or a new revision resets the delay to 2 seconds.
+If neither screen text nor an attention reason exists, the bubble shows only the agent identity.
 Answers remain in the agent. The app keeps question text in memory.
 
 Movement reference: [Pet Town](https://github.com/abhishek944/pet-town).

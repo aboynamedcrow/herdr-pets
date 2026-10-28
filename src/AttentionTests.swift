@@ -1,6 +1,7 @@
 import AppKit
 
 func attentionTokenSelfTest() {
+    attentionRetrySelfTest()
     let reason = "word: Choose the synthetic option."
     var pane: [String: Any] = [
         "terminal_id": "synthetic-terminal", "pane_id": "w1:p1", "agent_status": "blocked",
@@ -27,9 +28,9 @@ func attentionTokenSelfTest() {
     reader.update([expected])
     precondition(bubbleTexts[expected.id] == reason)
     screen = Data("\nSynthetic screen question\n".utf8)
-    precondition(readBlockedText(expected, fetch: fetch) == "Synthetic screen question")
+    precondition(readBlockedText(expected, fetch: fetch) == .screen("Synthetic screen question"))
     screen = Data(" \n".utf8)
-    precondition(readBlockedText(expected, fetch: fetch) == reason)
+    precondition(readBlockedText(expected, fetch: fetch) == .fallback(reason))
     screen = nil
     for (key, value) in [("pane_id", "w1:p2"), ("terminal_id", "other-terminal"), ("agent_status", "working")] {
         var changed = pane; changed[key] = value
@@ -58,7 +59,7 @@ func attentionTokenSelfTest() {
         return arguments.contains("read") ? nil : data(pane)
     }
     pane["tokens"] = ["attention": reason]
-    precondition(readBlockedText(remote, fetch: remoteFetch) == reason)
+    precondition(readBlockedText(remote, fetch: remoteFetch) == .fallback(reason))
     print("PASS: Attention fallback keeps pane, session, revision, status, machine, and screen priority checks")
 
     let saved = preferences
@@ -109,9 +110,9 @@ func attentionTokenSelfTest() {
     reader.update([expected])
     precondition(bubbleTexts[expected.id] == reason)
     screen = Data("Synthetic idle question?".utf8)
-    precondition(readBlockedText(expected, fetch: fetch) == "Synthetic idle question?")
+    precondition(readBlockedText(expected, fetch: fetch) == .screen("Synthetic idle question?"))
     screen = Data(" \n".utf8)
-    precondition(readBlockedText(expected, fetch: fetch) == reason)
+    precondition(readBlockedText(expected, fetch: fetch) == .fallback(reason))
     screen = nil
     scene.apply([expected])
     let tokenPet = scene.pets[expected.id]!
@@ -149,4 +150,56 @@ func attentionTokenSelfTest() {
     precondition(tokenPet.status == "done")
     scene.stop()
     print("PASS: Attention token suppresses done celebration and ignores empty values")
+}
+
+private func attentionRetrySelfTest() {
+    var pane: [String: Any] = [
+        "terminal_id": "fallback", "pane_id": "w1:p1", "agent_status": "blocked", "agent": "codex",
+        "agent_session": ["value": "session", "kind": "id"], "revision": 1,
+        "tokens": ["attention": "Short reason"]
+    ]
+    var agent = Agent(terminal_id: "fallback", agent_status: "blocked", agent: "codex", pane_id: "w1:p1",
+                      agent_session: AgentSession(value: "session", kind: "id"), revision: 1)
+    var now = 0.0
+    var screen: Data?
+    var paneChecks = 0
+    var screenReads = 0
+    var texts: [String: String] = [:]
+    var retry: (deadline: Double, fire: () -> Void)?
+    let fetch: PaneFetcher = { args, _ in
+        if args.contains("read") { screenReads += 1; return screen }
+        paneChecks += 1
+        return try! JSONSerialization.data(withJSONObject: ["result": ["pane": pane]])
+    }
+    let poller = BlockedTextPoller(clock: { now }, reader: { agent, done in done(readBlockedText(agent, fetch: fetch)) },
+                                   schedule: { delay, fire in
+        precondition(retry == nil)
+        retry = (now + delay, fire)
+        return { retry = nil }
+    }, onChange: { texts = $0 })
+    poller.update([agent])
+    precondition(texts[agent.id] == "Short reason" && paneChecks == 2 && screenReads == 1)
+    precondition(retry?.deadline == 2, "The fallback keeps a retry pending after both pane checks succeed")
+    now = 2
+    screen = Data("Full question?\n1. Apply\n2. Keep".utf8)
+    let recover = retry!.fire
+    retry = nil
+    recover()
+    precondition(texts[agent.id] == "Full question?\n1. Apply\n2. Keep" && paneChecks == 4 && screenReads == 2)
+    precondition(retry == nil, "A full question confirms the same revision without another agent poll")
+
+    now = 4
+    agent.revision = 2
+    pane["revision"] = 2
+    screen = nil
+    poller.update([agent])
+    precondition(texts[agent.id] == "Full question?\n1. Apply\n2. Keep", "A fallback cannot replace stored screen text")
+    precondition(retry?.deadline == 6)
+    now = 6
+    screen = Data("New full question?\n1. Continue\n2. Stop".utf8)
+    let replace = retry!.fire
+    retry = nil
+    replace()
+    precondition(texts[agent.id] == "New full question?\n1. Continue\n2. Stop" && retry == nil)
+    print("PASS: Attention fallback retries recover the full question and preserve existing screen text")
 }

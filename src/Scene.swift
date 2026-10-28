@@ -165,6 +165,7 @@ final class PetScene {
         CATransaction.setDisableActions(true)
         var moving = false
         for (id, pet) in pets {
+            pet.holdsBubble = bubbleManager?.holdsPet(id, pointer: mouse) ?? false
             if pet.step(t: t, dt: dt, world: worlds[id]!) { moving = true }
         }
         CATransaction.commit()
