@@ -77,16 +77,15 @@ final class PetScene {
                     if agent.terminal_id == "bubble-empty" { return nil }
                     if agent.terminal_id == "bubble-wrapped" {
                         return (agent.id, """
-                        IC-1834 result check. You kept group DMs with allowlisted people unrestricted.
-                        A side effect: in Omar's task in a group DM with Micah, a read of Omar's own
-                        mail or Drive posts its result where Micah can read it. Which rule should hold
-                        an origin post?
+                        The sample garden has a row of blue flowers beside a small stone path.
+                        A display choice: the next preview can show every flower beside the winding
+                        path or keep the smaller view with a single row and a short legend. Which view should appear
+                        in the next preview?
 
-                        ❯ 1. Hold read results
-                        When the audience holds another human besides the owner, ingwon and the bot,
-                        hold an origin post that follows a task-act read. The read result goes to
-                        ingwon's mirror only. Plain replies still post. Medium size.
-                        2. Only on audience growth
+                        ❯ 1. Show every flower
+                        Use the wider view with all flowers and the complete path.
+                        keep the legend below the picture so the colors remain easy to compare.
+                        2. Keep the small view
                         """)
                     }
                 }

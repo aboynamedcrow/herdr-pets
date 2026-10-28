@@ -80,7 +80,13 @@ Use the menu panel to open Studio if you close the window.
    Move the pointer away. It must collapse after about 0.3 seconds.
    Repeat near each screen edge while another app has focus. Check for repeated expansion and collapse.
    A bubble without question text must show only its identity. Hover must not expand it.
-   Click a collapsed bubble. It must open the same agent as **Open agent** or **Open remote**.
+   Click an expanded header, padding, and blue space outside the body text. Each click must open the agent.
+   A collapsed click must still open the same agent as **Open agent** or **Open remote**.
+   Click or drag within body text. It must select text without opening the agent.
+   Text selection can take keyboard focus. Click the other app before typing into it again.
+   Hover and surface clicks must not request keyboard focus. Only body selection can make the panel key.
+   While a bubble stays expanded, replace a long excerpt with a short one.
+   The panel must shrink to fit the short text while it stays under the pointer.
    Check white text, text selection, and the Open button on blue in both appearances.
 7. Click the desktop outside the bubbles. The underlying application must receive the click.
 8. Enable Reduce Motion. Check static blocked poses and readable bubbles.

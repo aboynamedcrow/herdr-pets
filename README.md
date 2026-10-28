@@ -163,7 +163,10 @@ The done animation and checkmark remain the same.
 
 Broadway shows blocked text in a bubble above each pet.
 Bubbles start collapsed. Hover over a question to read its text and choices.
-Move the pointer away to collapse it. Click a collapsed bubble to open the agent.
+Move the pointer away to collapse it.
+Click the header or blue space outside the body text to open the agent. A collapsed bubble also opens on click.
+Click or drag within the body text to select it. Use **Open agent** or **Open remote** to open from there.
+Text selection can take keyboard focus. Click the other app to return keyboard input to it.
 Each bubble fits its text and controls. Long text wraps and scrolls only when it cannot fit on screen.
 Blue bubbles show the agent identity and a one-line question preview.
 Remote bubbles append the readable machine name when one exists.

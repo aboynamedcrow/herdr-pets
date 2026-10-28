@@ -35,14 +35,32 @@ func compactBubbleTitle(agent: Agent, machineName: String? = nil) -> String {
     return agent.machine != "local" && !machine.isEmpty ? name + " · " + machine : name
 }
 
-// Expansion contains the collapsed panel, including when the screen clamps an edge.
-func expandedBubbleRect(from anchor: CGRect, size: CGSize, screen: CGRect) -> CGRect {
+// The collapsed size is the minimum. A prior expanded frame supplies position only.
+func expandedBubbleRect(from anchor: CGRect, size: CGSize, screen: CGRect,
+                        previous: CGRect? = nil, pointer: CGPoint? = nil) -> CGRect {
     let area = screen.insetBy(dx: 6, dy: 6)
     let size = CGSize(width: min(max(size.width, anchor.width), max(1, area.width)),
                       height: min(max(size.height, anchor.height), max(1, area.height)))
-    return CGRect(x: min(max(anchor.minX, area.minX), area.maxX - size.width),
-                  y: min(max(anchor.maxY - size.height, area.minY), area.maxY - size.height),
+    let placement = previous ?? anchor
+    var x = placement.minX, y = placement.maxY - size.height
+    if let pointer {
+        x = min(x, pointer.x - 1)
+        x = max(x, pointer.x - size.width + 1)
+        y = min(y, pointer.y - 1)
+        y = max(y, pointer.y - size.height + 1)
+    }
+    return CGRect(x: min(max(x, area.minX), area.maxX - size.width),
+                  y: min(max(y, area.minY), area.maxY - size.height),
                   width: size.width, height: size.height)
+}
+
+enum BubbleClickTarget { case none, openAgent, textSelection, control }
+
+func bubbleClickTarget(inside: Bool, expanded: Bool, overText: Bool, overControl: Bool) -> BubbleClickTarget {
+    guard inside else { return .none }
+    guard expanded else { return .openAgent }
+    if overControl { return .control }
+    return overText ? .textSelection : .openAgent
 }
 
 func bubbleRect(above head: CGPoint, size: CGSize, screen: CGRect, occupied: [CGRect]) -> CGRect {
@@ -83,6 +101,8 @@ private final class BubbleButton: NSButton {
         font = .systemFont(ofSize: 12, weight: .semibold)
         contentTintColor = bubbleBlue
     }
+    override var needsPanelToBecomeKey: Bool { false }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     @objc private func run() { invoke?() }
 }
 
@@ -90,6 +110,8 @@ private final class BubbleSurface: NSView {
     var hover: ((Bool) -> Void)?
     var click: (() -> Void)?
     var expanded = false
+    weak var body: NSTextView?
+    weak var openControl: NSButton?
     private var hoverArea: NSTrackingArea?
 
     override func updateTrackingAreas() {
@@ -101,14 +123,36 @@ private final class BubbleSurface: NSView {
     }
     override func mouseEntered(with event: NSEvent) { hover?(true) }
     override func mouseExited(with event: NSEvent) { hover?(false) }
-    override func mouseDown(with event: NSEvent) { if !expanded { click?() } }
+    override var needsPanelToBecomeKey: Bool { false }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func mouseDown(with event: NSEvent) { click?() }
+
+    private func isOverText(_ point: CGPoint) -> Bool {
+        guard let body, let container = body.textContainer, let layout = body.layoutManager else { return false }
+        let local = body.convert(point, from: self)
+        let origin = body.textContainerOrigin
+        let location = CGPoint(x: local.x - origin.x, y: local.y - origin.y)
+        layout.ensureLayout(for: container)
+        let glyph = layout.glyphIndex(for: location, in: container)
+        guard glyph < layout.numberOfGlyphs else { return false }
+        return layout.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: container).contains(location)
+    }
+
     override func hitTest(_ point: NSPoint) -> NSView? {
-        guard bounds.contains(convert(point, from: superview)) else { return nil }
-        return expanded ? super.hitTest(point) : self
+        let local = convert(point, from: superview)
+        let hit = super.hitTest(point)
+        let overControl = hit is NSScroller || (openControl.map { hit === $0 || hit?.isDescendant(of: $0) == true } ?? false)
+        let overText = expanded && hit === body && isOverText(local)
+        switch bubbleClickTarget(inside: bounds.contains(local), expanded: expanded, overText: overText, overControl: overControl) {
+        case .none: return nil
+        case .openAgent: return self
+        case .textSelection, .control: return hit
+        }
     }
 }
 
 private final class BubblePanel: NSPanel {
+    // Keep standard text selection and Copy available. Only the text view requests key focus.
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 }
@@ -136,12 +180,14 @@ private final class SpeechBubble {
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         panel.hidesOnDeactivate = false
+        panel.becomesKeyOnlyIfNeeded = true
         surface.wantsLayer = true
         surface.layer?.backgroundColor = bubbleBlue.cgColor
         surface.layer?.cornerRadius = 17
         surface.hover = hover; surface.click = focus
         panel.contentView = surface
         open = BubbleButton("Open agent", action: focus)
+        surface.body = text; surface.openControl = open
         header.font = .systemFont(ofSize: 11, weight: .semibold)
         header.textColor = .white
         header.lineBreakMode = .byTruncatingTail
@@ -197,8 +243,6 @@ private final class SpeechBubble {
         if open.title != openTitle { open.title = openTitle }
         let tip = agent.machine == "local" ? "Open this agent in Herdr." : "Open this remote agent in a new Ghostty window."
         if open.toolTip != tip { open.toolTip = tip }
-        let surfaceTip = expanded ? nil : tip
-        if surface.toolTip != surfaceTip { surface.toolTip = surfaceTip }
         preview.isHidden = expanded || !canExpand
         scroll.isHidden = !expanded; open.isHidden = !expanded
         let accessible = expanded || preview.stringValue.isEmpty ? title : title + "\n" + preview.stringValue
@@ -272,10 +316,13 @@ final class SpeechBubbles {
             let size = bubble.preferredSize(body: texts[id] ?? "", title: bubble.header.stringValue, screen: screen.size)
             let rect: CGRect
             if bubble.expanded, let anchor = bubble.anchor {
-                rect = expandedBubbleRect(from: bubble.expandedFrame ?? anchor, size: size, screen: screen)
+                let pointer = bubble.panel.frame.contains(NSEvent.mouseLocation) ? NSEvent.mouseLocation : nil
+                rect = expandedBubbleRect(from: anchor, size: size, screen: screen, previous: bubble.expandedFrame, pointer: pointer)
                 bubble.expandedFrame = rect
             } else if !bubble.expanded, let anchor = bubble.anchor {
-                rect = expandedBubbleRect(from: CGRect(origin: anchor.origin, size: size), size: size, screen: screen)
+                let placement = bubble.expandedFrame ?? anchor
+                let collapsed = CGRect(x: placement.minX, y: placement.maxY - size.height, width: size.width, height: size.height)
+                rect = expandedBubbleRect(from: collapsed, size: size, screen: screen)
                 bubble.anchor = nil; bubble.expandedFrame = nil
             } else { rect = bubbleRect(above: head, size: size, screen: screen, occupied: occupied) }
             occupied.append(rect)
