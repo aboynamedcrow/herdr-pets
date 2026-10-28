@@ -41,6 +41,11 @@ petView.autoresizingMask = [.width, .height]
 let rolePets = RolePets()
 rolePets.refresh()
 let scene = PetScene(root: petView.layer!, roles: rolePets)
+if demo { scene.machineNames = ["mac-a": "megatron", "mac-b": "mac-mini"] }
+if demo && arguments.contains("--stage-preview") {
+    if arguments.contains("--light") { NSApp.appearance = NSAppearance(named: .aqua) }
+    if arguments.contains("--dark") { NSApp.appearance = NSAppearance(named: .darkAqua) }
+}
 let overlay = makeOverlay(showing: petView)
 let areaEditor = AreaEditor()
 let controls = Controls()
@@ -76,9 +81,14 @@ if let i = arguments.firstIndex(of: "--menu-preview"), i + 1 < arguments.count {
     exit(0)
 }
 if let i = arguments.firstIndex(of: "--stage-preview"), i + 1 < arguments.count {
-    scene.apply(demoAgents())
+    let previewAgents = arguments.contains("--bubble-fixtures") ? [
+        Agent(terminal_id: "bubble-wrapped", agent_status: "blocked", agent: "claude", label: "IC-1834 Orchestrator", machine: "mac-a"),
+        Agent(terminal_id: "bubble-empty", agent_status: "blocked", agent: "codex", label: "IC-1839 Implementer", machine: "local"),
+        Agent(terminal_id: "bubble-short", agent_status: "blocked", agent: "codex", label: "A label with no issue and no role that exceeds the bubble width", machine: "mac-b")
+    ] : demoAgents()
+    scene.apply(previewAgents)
     DispatchQueue.main.async {
-        scene.apply(demoAgents())
+        scene.apply(previewAgents)
         do { try scene.exportPreview(to: URL(fileURLWithPath: arguments[i + 1])) }
         catch { FileHandle.standardError.write(Data("Stage preview failed: \(error)\n".utf8)); exit(1) }
         exit(0)
@@ -92,6 +102,7 @@ let agentPoller = AgentPoller(launchedByPlugin: launchedByPlugin, readAgents: { 
     }
 }) { agents, connected, shouldExit in
     if shouldExit { exit(0) }
+    if !demo { scene.machineNames = agentPoller.machineNames }
     scene.apply(agents)
     controls.refresh(connected: connected)
 }

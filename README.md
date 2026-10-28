@@ -162,12 +162,15 @@ They do not cross the screen interior to chase it.
 The done animation and checkmark remain the same.
 
 Broadway shows blocked text in a bubble above each pet.
-One bubble shows its text. Click a compact bubble to select another pet.
+Bubbles start collapsed. Hover over a question to read its text and choices.
+Move the pointer away to collapse it. Click a collapsed bubble to open the agent.
 Each bubble fits its text and controls. Long text wraps and scrolls only when it cannot fit on screen.
-Herdr 0.9.5 supplies a visible terminal excerpt. The bubble labels that source.
+Blue bubbles show the agent identity and a one-line question preview.
+Remote bubbles append the readable machine name when one exists.
+Herdr 0.9.5 supplies the visible terminal excerpt.
 The app checks the machine, terminal, native session, and screen revision before it accepts a read.
 **Open agent** checks the session again before focusing its pane.
-If the text is unavailable, the bubble shows **Waiting for input**.
+If the text is unavailable, the bubble shows only the agent identity.
 Answers remain in the agent. The app keeps question text in memory.
 
 Movement reference: [Pet Town](https://github.com/abhishek944/pet-town).

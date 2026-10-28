@@ -15,6 +15,7 @@ final class PetScene {
     private var timer: Timer?       // nil while every pet rests
     private var lastTime: Double?
     private var bubbleManager: SpeechBubbles?
+    var machineNames: [String: String] = [:]
     private var blockedTexts: [String: String] = [:]
     private var groups: [String: String] = [:]   // Pet id → cluster key. One empty key when clustering is off
     private lazy var blockedReader = BlockedTextPoller { [weak self] texts in
@@ -71,7 +72,26 @@ final class PetScene {
         }
         let eligible = preferences.visible && preferences.showQuestionBubbles
         if demo {
-            blockedTexts = Dictionary(uniqueKeysWithValues: agents.filter(\.needsAttention).map { ($0.id, "Preview question: Should I apply these changes?\n1. Apply\n2. Keep the current version") })
+            blockedTexts = Dictionary(uniqueKeysWithValues: agents.filter(\.needsAttention).compactMap { agent -> (String, String)? in
+                if arguments.contains("--stage-preview") && arguments.contains("--bubble-fixtures") {
+                    if agent.terminal_id == "bubble-empty" { return nil }
+                    if agent.terminal_id == "bubble-wrapped" {
+                        return (agent.id, """
+                        IC-1834 result check. You kept group DMs with allowlisted people unrestricted.
+                        A side effect: in Omar's task in a group DM with Micah, a read of Omar's own
+                        mail or Drive posts its result where Micah can read it. Which rule should hold
+                        an origin post?
+
+                        ❯ 1. Hold read results
+                        When the audience holds another human besides the owner, ingwon and the bot,
+                        hold an origin post that follows a task-act read. The read result goes to
+                        ingwon's mirror only. Plain replies still post. Medium size.
+                        2. Only on audience growth
+                        """)
+                    }
+                }
+                return (agent.id, "Preview question: Should I apply these changes?\n1. Apply\n2. Keep the current version")
+            })
         } else { blockedReader.update(eligible ? agents.filter { pets[$0.id] != nil } : []) }
         syncBubbles()
         if changed && preferences.visible { update() }   // Show the new status in this same commit, not one tick later
@@ -157,7 +177,7 @@ final class PetScene {
     private func syncBubbles() {
         guard preferences.visible && preferences.showQuestionBubbles else { bubbleManager?.hideAll(); return }
         if bubbleManager == nil { bubbleManager = SpeechBubbles() }
-        bubbleManager?.update(agents: agents, pets: pets, texts: blockedTexts, origin: screenOrigin, screen: walls.offsetBy(dx: screenOrigin.x, dy: screenOrigin.y))
+        bubbleManager?.update(agents: agents, pets: pets, texts: blockedTexts, origin: screenOrigin, screen: walls.offsetBy(dx: screenOrigin.x, dy: screenOrigin.y), machineNames: machineNames, expandPreview: demo && arguments.contains("--stage-preview") && arguments.contains("--expand-bubbles"))
     }
 
     func exportPreview(to directory: URL) throws {

@@ -82,6 +82,7 @@ func studioSelfTest() {
     floorSelfTest()
     blockedTextSelfTest()
     attentionTokenSelfTest()
+    bubbleSelfTest()
     _ = NSApplication.shared
     let options = [AvatarChoice(token: "builtin:cat", name: "Cat", image: Sprites.thumbnail(.cat)), AvatarChoice(token: "builtin:robot", name: "Robot", image: Sprites.thumbnail(.robot))]
     let tile = AvatarAssignmentTile(choices: options, selection: [], inherited: options)
