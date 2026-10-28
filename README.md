@@ -164,11 +164,13 @@ The done animation and checkmark remain the same.
 Broadway shows blocked text in a bubble above each pet.
 Bubbles start collapsed. Hover over a question to read its text and choices.
 Move the pointer away to collapse it.
-Click the header or blue space outside the body text to open the agent. A collapsed bubble also opens on click.
+Click the header or glass outside the body text to open the agent. A collapsed bubble also opens on click.
 Click or drag within the body text to select it. Use **Open agent** or **Open remote** to open from there.
 Text selection can take keyboard focus. Click the other app to return keyboard input to it.
 Each bubble fits its text and controls. Long text wraps and scrolls only when it cannot fit on screen.
-Blue bubbles show the agent identity and a one-line question preview.
+Translucent Liquid Glass bubbles show the agent identity and a one-line question preview.
+Glass needs macOS 26 or later and a build with the macOS 26 SDK or later.
+Other builds show a popover blur.
 Remote bubbles append the readable machine name when one exists.
 Herdr 0.9.5 supplies the visible terminal excerpt.
 The app checks the machine, terminal, native session, and screen revision before it accepts a read.

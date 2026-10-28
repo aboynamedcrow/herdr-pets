@@ -51,6 +51,19 @@ func bubbleSelfTest() {
     let collapsed = questionBubbleSize(text: sample, title: title, expanded: false, screen: screen.size)
     let expanded = questionBubbleSize(text: sample, title: title, expanded: true, screen: screen.size)
     precondition(empty.height < collapsed.height && collapsed.height < expanded.height, "Sizes separate identity, preview, and body")
+    let headerFont = NSFont.systemFont(ofSize: 12, weight: .semibold)
+    let headerSize = (title as NSString).size(withAttributes: [.font: headerFont])
+    precondition(empty.width > headerSize.width && empty.height > headerSize.height,
+                 "Identity bubbles fit the 12 pt header")
+    let short = questionBubbleSize(text: "Apply?", title: title, expanded: true, screen: screen.size)
+    let button = NSButton(title: "Open agent", target: nil, action: nil)
+    button.bezelStyle = .rounded
+    #if compiler(>=6.2)
+    if #available(macOS 26.0, *) { button.bezelStyle = .glass }
+    #endif
+    let bodySize = ("Apply?" as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 13)])
+    precondition(short.height > headerSize.height + bodySize.height + button.fittingSize.height,
+                 "Expanded bubbles fit the header, body, and native button")
     for x in [screen.minX + 6, screen.maxX - collapsed.width - 6] {
         for y in [screen.minY + 6, screen.maxY - collapsed.height - 6] {
             let anchor = CGRect(origin: CGPoint(x: x, y: y), size: collapsed)
@@ -79,7 +92,7 @@ func bubbleSelfTest() {
     precondition(bubbleClickTarget(inside: true, expanded: false, overText: true, overControl: false) == .openAgent,
                  "Click target: collapsed bubbles open the agent")
     precondition(bubbleClickTarget(inside: true, expanded: true, overText: false, overControl: false) == .openAgent,
-                 "Click target: expanded headers and blue padding open the agent")
+                 "Click target: expanded headers and glass padding open the agent")
     precondition(bubbleClickTarget(inside: true, expanded: true, overText: true, overControl: false) == .textSelection,
                  "Click target: body text keeps native selection")
     precondition(bubbleClickTarget(inside: true, expanded: true, overText: false, overControl: true) == .control,
