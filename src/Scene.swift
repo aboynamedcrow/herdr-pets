@@ -15,6 +15,7 @@ final class PetScene {
     private var timer: Timer?       // nil while every pet rests
     private var lastTime: Double?
     private var bubbleManager: SpeechBubbles?
+    var machineNames: [String: String] = [:]
     private var blockedTexts: [String: String] = [:]
     private var groups: [String: String] = [:]   // Pet id → cluster key. One empty key when clustering is off
     private lazy var blockedReader = BlockedTextPoller { [weak self] texts in
@@ -71,7 +72,25 @@ final class PetScene {
         }
         let eligible = preferences.visible && preferences.showQuestionBubbles
         if demo {
-            blockedTexts = Dictionary(uniqueKeysWithValues: agents.filter(\.needsAttention).map { ($0.id, "Preview question: Should I apply these changes?\n1. Apply\n2. Keep the current version") })
+            blockedTexts = Dictionary(uniqueKeysWithValues: agents.filter(\.needsAttention).compactMap { agent -> (String, String)? in
+                if arguments.contains("--stage-preview") && arguments.contains("--bubble-fixtures") {
+                    if agent.terminal_id == "bubble-empty" { return nil }
+                    if agent.terminal_id == "bubble-wrapped" {
+                        return (agent.id, """
+                        The sample garden has a row of blue flowers beside a small stone path.
+                        A display choice: the next preview can show every flower beside the winding
+                        path or keep the smaller view with a single row and a short legend. Which view should appear
+                        in the next preview?
+
+                        ❯ 1. Show every flower
+                        Use the wider view with all flowers and the complete path.
+                        keep the legend below the picture so the colors remain easy to compare.
+                        2. Keep the small view
+                        """)
+                    }
+                }
+                return (agent.id, "Preview question: Should I apply these changes?\n1. Apply\n2. Keep the current version")
+            })
         } else { blockedReader.update(eligible ? agents.filter { pets[$0.id] != nil } : []) }
         syncBubbles()
         if changed && preferences.visible { update() }   // Show the new status in this same commit, not one tick later
@@ -157,7 +176,7 @@ final class PetScene {
     private func syncBubbles() {
         guard preferences.visible && preferences.showQuestionBubbles else { bubbleManager?.hideAll(); return }
         if bubbleManager == nil { bubbleManager = SpeechBubbles() }
-        bubbleManager?.update(agents: agents, pets: pets, texts: blockedTexts, origin: screenOrigin, screen: walls.offsetBy(dx: screenOrigin.x, dy: screenOrigin.y))
+        bubbleManager?.update(agents: agents, pets: pets, texts: blockedTexts, origin: screenOrigin, screen: walls.offsetBy(dx: screenOrigin.x, dy: screenOrigin.y), machineNames: machineNames, expandPreview: demo && arguments.contains("--stage-preview") && arguments.contains("--expand-bubbles"))
     }
 
     func exportPreview(to directory: URL) throws {

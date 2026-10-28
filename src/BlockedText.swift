@@ -90,13 +90,27 @@ func attentionQuestionPreview(_ text: String) -> String {
               !lines[start - 1].hasPrefix("• "), !lines[start - 1].hasPrefix("⏺ ") { start -= 1 }
     }
     let value = lines[start...(question ?? start)].filter { !$0.isEmpty }.joined(separator: " ")
-    if value.isEmpty { return "Waiting for a question. Open the agent." }
-    if value.count <= 180 { return value }
-    if let question {
-        let questionLine = lines[question]
-        return questionLine.count > 180 ? String(questionLine.prefix(177)) + "…" : questionLine
+    return value
+}
+
+func joinedQuestionLines(_ text: String) -> String {
+    let lines = text.components(separatedBy: "\n")
+    func boundary(_ line: String) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty || trimmed.range(of: "^[❯›>●○ ]*\\d+[.)]\\s", options: .regularExpression) != nil
+            || (trimmed.first.map { "•⏺›❯".contains($0) } ?? false)
     }
-    return String(value.prefix(177)) + "…"
+    var result = ""
+    var previous = ""
+    for (index, line) in lines.enumerated() {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        let lowercase = trimmed.first.map { $0.isLowercase } ?? false
+        let join = !boundary(previous) && !boundary(line) && lowercase
+        if index > 0 { result += join ? " " : "\n" }
+        result += join ? trimmed : line
+        previous = line
+    }
+    return result
 }
 
 typealias PaneFetcher = ([String], Int) -> Data?

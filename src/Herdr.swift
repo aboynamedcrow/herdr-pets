@@ -42,6 +42,7 @@ struct Agent: Decodable {
 struct Machine: Decodable {
     let id: String
     let enabled: Bool
+    var target: String? = nil
 }
 
 func herdrData(_ arguments: [String]) -> Data? {
@@ -92,6 +93,7 @@ final class AgentPoller {
     private let readMachines: MachineFetcher
     private let launchedByPlugin: Bool
     private let onUpdate: ([Agent], Bool, Bool) -> Void
+    private(set) var machineNames: [String: String] = [:]
     private var local: [Agent] = []
     private var remotes: [String: Remote] = [:]
     private var remoteInFlight: Set<String> = []
@@ -131,6 +133,7 @@ final class AgentPoller {
             self.otherMachines = otherMachines
             generation += 1
             remotes.removeAll()
+            machineNames.removeAll()
             nextList = 0
         }
         let now = clock()
@@ -153,6 +156,10 @@ final class AgentPoller {
                 self.listInFlight = false
                 guard self.otherMachines && self.generation == generation else { return }
                 if let machines {
+                    self.machineNames = Dictionary(machines.filter { $0.enabled && $0.id != "local" }.compactMap { machine in
+                        guard let target = machine.target?.trimmingCharacters(in: .whitespacesAndNewlines), !target.isEmpty else { return nil }
+                        return (machine.id, target)
+                    }, uniquingKeysWith: { first, _ in first })
                     let enabled = Set(machines.filter { $0.enabled && $0.id != "local" }.map(\.id))
                     self.remotes = self.remotes.filter { enabled.contains($0.key) }
                     for id in enabled where self.remotes[id] == nil { self.remotes[id] = Remote() }

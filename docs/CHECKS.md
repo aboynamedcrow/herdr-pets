@@ -43,6 +43,9 @@ A library root can be a Stow link. The scan must include folders without rules.
 
 The first command writes one native image for each Studio tab.
 The third writes a native stage image and question bubbles. Its questions are preview fixtures.
+Add `--expand-bubbles` to expand one remote bubble in a stage preview.
+Add `--bubble-fixtures` for a wrapped question, an empty body, and a long label.
+Add `--light` or `--dark` to set the appearance in a demo stage preview.
 The fourth writes `menu.png`, the menu panel with its Movement section.
 The demo agents use three machines and two projects, so a stage preview with **Cluster** set shows groups.
 Save a home area flush with the top edge in the preview preferences. The stage preview must then show upside-down pets.
@@ -73,6 +76,18 @@ Use the menu panel to open Studio if you close the window.
 4. Change a custom size share. Compare the preview and desktop result. Check Reset.
 5. Check question bubbles on and off in both movement modes. Then move the pointer to each side of the screen. Attention pets must traverse screen edges.
 6. Check short and long bubbles. Their size must fit their text and controls within the screen.
+   Hover over a collapsed question. It must expand under the pointer without moving away.
+   Move the pointer away. It must collapse after about 0.3 seconds.
+   Repeat near each screen edge while another app has focus. Check for repeated expansion and collapse.
+   A bubble without question text must show only its identity. Hover must not expand it.
+   Click an expanded header, padding, and blue space outside the body text. Each click must open the agent.
+   A collapsed click must still open the same agent as **Open agent** or **Open remote**.
+   Click or drag within body text. It must select text without opening the agent.
+   Text selection can take keyboard focus. Click the other app before typing into it again.
+   Hover and surface clicks must not request keyboard focus. Only body selection can make the panel key.
+   While a bubble stays expanded, replace a long excerpt with a short one.
+   The panel must shrink to fit the short text while it stays under the pointer.
+   Check white text, text selection, and the Open button on blue in both appearances.
 7. Click the desktop outside the bubbles. The underlying application must receive the click.
 8. Enable Reduce Motion. Check static blocked poses and readable bubbles.
 9. Change the selected monitor or Dock placement. Check pet and bubble bounds again.
@@ -96,7 +111,8 @@ When that agent resumes, its bubble must disappear.
 A missing or changed session must not open a different agent.
 Record native checks separately from synthetic fixtures and source inspection.
 
-Collapsed bubbles show a short question preview. Expand one to see the latest question and choices.
+Collapsed bubbles show the agent identity and the first line of its question paragraph.
+Hover over one to see the latest question and choices.
 The reader prefers the final visible question. For other formats, it uses a bounded recent paragraph or option group.
 It does not read the full provider conversation. Native question extraction remains a heuristic over visible terminal text.
 On 2026-10-25, native probes checked Codex and Claude prompt samples, wrapped borders, and an option group without a question mark.
