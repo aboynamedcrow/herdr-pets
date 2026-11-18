@@ -186,17 +186,19 @@ private func machineSelfTest() {
     precondition(Agent(terminal_id: "b:c", agent_status: "idle", machine: "a").id != Agent(terminal_id: "c", agent_status: "idle", machine: "a:b").id)
     print("PASS: machines 1/8 merge, enabled profiles, collision-free keys")
 
-    // Local reads each 2 seconds, remotes each 6, and profiles each 60.
+    // Local reads each 2 seconds, remotes each machinePollInterval, and profiles each 60.
     f.tick(2)
     precondition(f.agentReads["local"] == 2 && f.agentReads["mac-a"] == 1 && f.listReads == 1)
-    f.tick(4)   // Keep Local pending to prove that another source can still start.
+    f.tick(machinePollInterval - 2.5)
+    precondition(f.agentReads["mac-a"] == 1 && f.agentReads["mac-b"] == 1)   // Not due yet.
+    f.tick(0.5)   // Keep Local pending to prove that another source can still start.
     precondition(f.agentReads["local"] == 2 && f.agentReads["mac-a"] == 2)
-    f.tick(6)
+    f.tick(machinePollInterval)
     precondition(f.agentReads["mac-a"] == 2 && f.agentReads["mac-b"] == 2)
     f.reply("local", [])
     f.reply("mac-a", [agent])
     f.reply("mac-b", [agent])
-    f.tick(47)
+    f.tick(59 - 2 * machinePollInterval)
     precondition(f.listReads == 1)
     f.tick(1)
     precondition(f.listReads == 2)
@@ -229,7 +231,7 @@ private func machineSelfTest() {
     hold.reply("local", [agent])
     hold.machines([profiles[0]])
     hold.reply("mac-a", [agent])
-    hold.tick(6)
+    hold.tick(machinePollInterval)
     hold.reply("mac-a", nil)
     hold.tick(59.9)
     hold.reply("mac-a", nil)
@@ -238,14 +240,14 @@ private func machineSelfTest() {
     hold.tick(0.1)
     precondition(hold.agents.map(\.machine) == ["local", "mac-a"] && hold.agents.map(\.asleep) == [false, true])
     for _ in 0..<100 {   // Asleep pets stay while the machine keeps failing.
-        hold.tick(6)
+        hold.tick(machinePollInterval)
         hold.reply("mac-a", nil)
     }
     precondition(hold.agents.map(\.asleep) == [false, true] && hold.agents[1].id == before.id)
-    hold.tick(6)
+    hold.tick(machinePollInterval)
     hold.reply("mac-a", [agent])
     precondition(hold.agents.count == 2 && hold.agents[1].id == before.id && !hold.agents[1].asleep)
-    hold.tick(6)
+    hold.tick(machinePollInterval)
     hold.reply("mac-a", [])
     precondition(hold.agents.count == 1)   // An empty success removes old pets at once.
     let asleep = PollerFixture()   // Disabling an asleep machine removes its pets.
@@ -253,7 +255,7 @@ private func machineSelfTest() {
     asleep.reply("local", [])
     asleep.machines([profiles[0]])
     asleep.reply("mac-a", [agent])
-    asleep.tick(6)
+    asleep.tick(machinePollInterval)
     asleep.reply("mac-a", nil)
     asleep.tick(60)
     precondition(asleep.agents.map(\.asleep) == [true])
@@ -325,7 +327,7 @@ private func machineSelfTest() {
         exit.reply("local", [agent])
         exit.reply("mac-a", nil)
         for _ in 0..<15 {
-            exit.tick(6)
+            exit.tick(machinePollInterval)
             exit.reply("local", [])
             exit.reply("mac-a", nil)
             precondition(exit.poller.localFailures == 0 && !exit.shouldExit)
