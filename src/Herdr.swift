@@ -1,7 +1,7 @@
 import Foundation
 
 let localPollInterval = 2.0
-let machinePollInterval = 6.0
+let machinePollInterval = 10.0
 let machineListInterval = 60.0
 let machineHoldInterval = 60.0
 
