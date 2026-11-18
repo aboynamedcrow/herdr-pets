@@ -44,7 +44,7 @@ The pet overlay passes clicks through. Question bubbles have controls.
 ## Machines
 
 Pets show agents from Local and every enabled machine in Herdr's saved machine list.
-Local refreshes every 2 seconds. Other machines refresh every 6 seconds.
+Local refreshes every 2 seconds. Other machines refresh every 10 seconds.
 The app reads the machine list at startup and every 60 seconds.
 Machine IDs and terminal IDs keep each pet stable.
 A pane label or working folder change can select different art without moving the pet.
